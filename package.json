@@ -8,16 +8,24 @@
     "start": "node src/index.js",
     "dev": "nodemon src/index.js"
   },
-  "keywords": ["express", "postgresql", "medical", "ai"],
+  "keywords": [
+    "express",
+    "postgresql",
+    "medical",
+    "ai"
+  ],
   "author": "Lucas",
   "license": "ISC",
   "dependencies": {
     "axios": "^1.7.9",
+    "bcrypt": "^6.0.0",
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
-    "express": "^5.0.1",
-    "jsonwebtoken": "^9.0.2",
+    "express": "^5.2.1",
+    "google-translate-api-next": "^0.1.0",
+    "jsonwebtoken": "^9.0.3",
+    "natural": "^8.1.0",
     "pg": "^8.13.1"
   },
   "devDependencies": {
