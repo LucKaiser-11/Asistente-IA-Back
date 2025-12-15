@@ -16,10 +16,10 @@ const JWT_SECRET = 'mi-secreto-super-seguro-2024';
 
 // CONEXIÓN A POSTGRESQL
 const pool = new Pool({
-  user: 'postgres',        // ← tu usuario
+  user: 'postgres',
   host: 'localhost',
-  database: 'asistmedic',  // ← tu BD
-  password: '12345678',    // ← tu contraseña
+  database: 'asistmedic',
+  password: '12345678',
   port: 5432,
 });
 
@@ -27,6 +27,7 @@ pool.connect()
   .then(() => console.log('✅ Conectado a PostgreSQL'))
   .catch(err => console.error('❌ Error conectando a PostgreSQL:', err));
 
+// DATASET COMPLETO (140 enfermedades)
 const diagnosticos = [
   { enfermedad: "Migraña", sintomas: "dolor cabeza intenso pulsante náuseas vómitos sensibilidad luz sonido fotofobia aura visual mareo" },
   { enfermedad: "Sinusitis aguda", sintomas: "dolor cabeza frontal presión facial congestión nasal secreción amarilla verdosa moco espeso dolor mejillas frente fiebre" },
@@ -87,7 +88,7 @@ const diagnosticos = [
   { enfermedad: "Caspa", sintomas: "descamación cuero cabelludo escamas blancas picazón resequedad" },
   { enfermedad: "Piojos", sintomas: "picazón intensa cuero cabelludo liendres huevos rascado constante" },
   { enfermedad: "Sarna", sintomas: "picazón intensa nocturna lesiones lineales surcos piel rascado" },
-  { enfermedad: "Pie atleta", sintomas: "picazón intensa dedos pie planta descamación piel agrietada olor desagradable ardor hongos" },
+  { enfermedad: "Pie atleta", sintomas: "picazón intensa dedos pie planta pies descamación piel agrietada olor desagradable ardor hongos dolor caminar pisar" },
   { enfermedad: "Onicomicosis", sintomas: "engrosamiento uñas amarillas decoloración hongos uñas quebradizas" },
   { enfermedad: "Candidiasis oral", sintomas: "manchas blancas lengua boca dolor ardor algodoncillo" },
   { enfermedad: "Candidiasis vaginal", sintomas: "picazón vaginal intensa flujo blanco espeso ardor infección hongos" },
@@ -101,9 +102,9 @@ const diagnosticos = [
   { enfermedad: "Síndrome ovario poliquístico", sintomas: "irregularidades menstruales acné vello excesivo aumento peso quistes" },
   { enfermedad: "Menopausia", sintomas: "sofocos calores repentinos sudores nocturnos irregularidades menstruales ausencia regla" },
   { enfermedad: "Osteoporosis", sintomas: "fracturas frecuentes huesos frágiles pérdida altura dolor espalda" },
-  { enfermedad: "Artrosis", sintomas: "dolor articular rigidez rodillas caderas manos dedos pies tobillos crujido movimiento desgaste" },
+  { enfermedad: "Artrosis", sintomas: "dolor articular rigidez rodillas caderas manos dedos pies pie tobillos tobillo crujido movimiento desgaste dolor caminar pisar apoyo" },
   { enfermedad: "Artritis reumatoide", sintomas: "dolor articular simétrico rigidez matinal prolongada hinchazón articulaciones dedos manos muñecas inflamación" },
-  { enfermedad: "Gota", sintomas: "dolor articular súbito muy intenso dedo gordo pie tobillo enrojecimiento hinchazón calor articulación ataque nocturno cristales" },
+  { enfermedad: "Gota", sintomas: "dolor articular súbito muy intenso dedo gordo pie pies tobillo enrojecimiento hinchazón calor articulación ataque nocturno cristales dolor caminar pisar" },
   { enfermedad: "Lupus", sintomas: "erupción facial mariposa mejillas nariz dolor articular fiebre fatiga" },
   { enfermedad: "Esclerodermia", sintomas: "engrosamiento piel dura rigidez dedos cara dificultad tragar" },
   { enfermedad: "Síndrome Sjögren", sintomas: "sequedad extrema ocular bucal ojos secos boca seca dificultad tragar" },
@@ -163,19 +164,30 @@ const diagnosticos = [
   { enfermedad: "Tendinitis", sintomas: "dolor tendón movimiento inflamación rigidez debilidad muñeca codo hombro tobillo rodilla" }
 ];
 
-// ENTRENAR ML
-const { BayesClassifier } = natural;
-const classifier = new BayesClassifier();
-diagnosticos.forEach(({ enfermedad, sintomas }) => {
-  classifier.addDocument(sintomas, enfermedad);
-});
-classifier.train();
+// ====================== ENTRENAR SOLO 2 ALGORITMOS ======================
 
-console.log(`✅ ML listo con ${diagnosticos.length} enfermedades`);
+// 1. NAIVE BAYES
+const { BayesClassifier } = natural;
+const nbClassifier = new BayesClassifier();
+diagnosticos.forEach(({ enfermedad, sintomas }) => {
+  nbClassifier.addDocument(sintomas, enfermedad);
+});
+nbClassifier.train();
+console.log('✅ Naive Bayes entrenado');
+
+// 2. LOGISTIC REGRESSION
+const { LogisticRegressionClassifier } = natural;
+const lrClassifier = new LogisticRegressionClassifier();
+diagnosticos.forEach(({ enfermedad, sintomas }) => {
+  lrClassifier.addDocument(sintomas, enfermedad);
+});
+lrClassifier.train();
+console.log('✅ Logistic Regression entrenado');
+
+console.log(`\n🎯 Sistema listo con 2 algoritmos supervisados y ${diagnosticos.length} enfermedades\n`);
 
 // ====================== AUTENTICACIÓN ======================
 
-// REGISTRO
 app.post('/api/auth/register', async (req, res) => {
   try {
     const { name, email, password } = req.body;
@@ -214,7 +226,6 @@ app.post('/api/auth/register', async (req, res) => {
   }
 });
 
-// LOGIN
 app.post('/api/auth/login', async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -256,6 +267,10 @@ app.post('/api/auth/login', async (req, res) => {
   }
 });
 
+// ====================== DIAGNÓSTICO CON 2 ALGORITMOS ======================
+
+// ====================== DIAGNÓSTICO CON 2 ALGORITMOS ======================
+
 app.post('/api/diagnostico', (req, res) => {
   const { sintomas } = req.body;
 
@@ -266,54 +281,101 @@ app.post('/api/diagnostico', (req, res) => {
   }
 
   const texto = sintomas.join(" ");
-  
-  // DEBUG: ver qué texto procesa el modelo
   console.log('📝 Texto recibido:', texto);
 
-  const predicciones = classifier.getClassifications(texto);
+  // 1. NAIVE BAYES
+  const nbPredicciones = nbClassifier.getClassifications(texto);
+  const nbTop = nbPredicciones[0];
   
-  // DEBUG: ver top 5 con probabilidades
-  console.log('🎯 Top 5 predicciones:');
-  predicciones.slice(0, 5).forEach((p, i) => {
-    console.log(`  ${i+1}. ${p.label}: ${(p.value * 100).toFixed(2)}%`);
-  });
+  // 2. LOGISTIC REGRESSION
+  const lrPredicciones = lrClassifier.getClassifications(texto);
+  const lrTop = lrPredicciones[0];
 
-  if (!predicciones.length) {
-    return res.json({
-      diagnostico: null,
-      confianza: 0,
-      alternativas: [],
-      sintomas: texto
-    });
+  console.log('🎯 Predicciones:');
+  console.log(`  Naive Bayes: ${nbTop.label} (${(nbTop.value * 100).toFixed(1)}%)`);
+  console.log(`  Logistic Regression: ${lrTop.label} (${(lrTop.value * 100).toFixed(1)}%)`);
+
+  // ✅ NUEVA LÓGICA: Si coinciden, promediar; si no, elegir el más confiable
+  let diagnosticoFinal;
+  let confianzaFinal;
+  let votosAlgoritmos;
+
+  if (nbTop.label === lrTop.label) {
+    // Caso 1: Ambos algoritmos coinciden → Promediar confianzas
+    diagnosticoFinal = nbTop.label;
+    confianzaFinal = Math.round(((nbTop.value + lrTop.value) / 2) * 100);
+    votosAlgoritmos = 2;
+    console.log(`✅ Coincidencia: ${diagnosticoFinal} (promedio: ${confianzaFinal}%)`);
+  } else {
+    // Caso 2: No coinciden → Elegir el de MAYOR CONFIANZA
+    if (nbTop.value > lrTop.value) {
+      diagnosticoFinal = nbTop.label;
+      confianzaFinal = Math.round(nbTop.value * 100);
+      votosAlgoritmos = 1;
+      console.log(`⚠️ Ganador: Naive Bayes con ${confianzaFinal}%`);
+    } else {
+      diagnosticoFinal = lrTop.label;
+      confianzaFinal = Math.round(lrTop.value * 100);
+      votosAlgoritmos = 1;
+      console.log(`⚠️ Ganador: Logistic Regression con ${confianzaFinal}%`);
+    }
   }
 
-  const mejor = predicciones[0];
-  const UMBRAL = 0.01; // bajado para que salgan más alternativas
+  // FUNCIÓN PARA BUSCAR SÍNTOMAS
+  const buscarSintomas = (nombreEnfermedad) => {
+    const enfermedad = diagnosticos.find(d => d.enfermedad === nombreEnfermedad);
+    if (enfermedad) {
+      return enfermedad.sintomas
+        .split(' ')
+        .filter(s => s.length > 3)
+        .slice(0, 4)
+        .map(s => s.charAt(0).toUpperCase() + s.slice(1));
+    }
+    return ['Síntomas no disponibles'];
+  };
 
-  const alternativas = predicciones
-    .slice(1)
-    .filter(p => p.value >= UMBRAL)
-    .slice(0, 3);
+  // Alternativas
+  const alternativas = nbPredicciones
+    .slice(1, 4)
+    .map(p => ({
+      diagnostico: p.label,
+      confianza: Math.round(p.value * 100),
+      sintomas: buscarSintomas(p.label)
+    }));
 
   res.json({
-    diagnostico: mejor.label,
-    confianza: Math.round(mejor.value * 100),
-    alternativas: alternativas.map(p => ({
-      diagnostico: p.label,
-      confianza: Math.round(p.value * 100)
-    })),
-    sintomas: texto,
-    total: diagnosticos.length
+    diagnostico: diagnosticoFinal,
+    confianza: confianzaFinal,
+    votos: votosAlgoritmos,
+    sintomas_enfermedad: buscarSintomas(diagnosticoFinal),
+    
+    algoritmos: [
+      {
+        nombre: "Naive Bayes",
+        prediccion: nbTop.label,
+        confianza: Math.round(nbTop.value * 100)
+      },
+      {
+        nombre: "Logistic Regression",
+        prediccion: lrTop.label,
+        confianza: Math.round(lrTop.value * 100)
+      }
+    ],
+    
+    alternativas,
+    sintomas: texto
   });
 });
+
 
 
 // ====================== SERVIDOR ======================
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log(`🚀 http://localhost:${PORT}`);
+  console.log(`🚀 AsistMedic: http://localhost:${PORT}`);
   console.log(`📡 POST /api/auth/register`);
   console.log(`📡 POST /api/auth/login`);
   console.log(`📡 POST /api/diagnostico`);
+  console.log(`🤖 Algoritmos: Naive Bayes + Logistic Regression`);
 });
