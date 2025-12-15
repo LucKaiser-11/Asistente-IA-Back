@@ -6,7 +6,6 @@ import jwt from 'jsonwebtoken';
 import pg from 'pg';
 
 const { Pool } = pg;
-
 const app = express();
 app.use(cors());
 app.use(express.json());
@@ -27,164 +26,346 @@ pool.connect()
   .then(() => console.log('✅ Conectado a PostgreSQL'))
   .catch(err => console.error('❌ Error conectando a PostgreSQL:', err));
 
-// DATASET COMPLETO (140 enfermedades)
+// ====================== NORMALIZACIÓN DE TEXTO ======================
+const normalizarTexto = (texto) => {
+  return texto
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^\w\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+};
+
+// ====================== DATASET COMPLETO ======================
 const diagnosticos = [
-  { enfermedad: "Migraña", sintomas: "dolor cabeza intenso pulsante náuseas vómitos sensibilidad luz sonido fotofobia aura visual mareo" },
-  { enfermedad: "Sinusitis aguda", sintomas: "dolor cabeza frontal presión facial congestión nasal secreción amarilla verdosa moco espeso dolor mejillas frente fiebre" },
-  { enfermedad: "Gripe", sintomas: "fiebre alta escalofríos dolor cuerpo muscular fatiga cansancio extremo tos seca dolor garganta congestión nasal" },
-  { enfermedad: "Faringitis", sintomas: "dolor garganta ardor tragar dificultad deglución amígdalas inflamadas rojas fiebre ganglios cuello" },
-  { enfermedad: "Gastroenteritis", sintomas: "diarrea líquida dolor abdominal cólicos náuseas vómitos deshidratación fiebre malestar estómago" },
-  { enfermedad: "Resfriado común", sintomas: "congestión nasal moqueo estornudos frecuentes tos leve dolor garganta irritación nariz tapada" },
-  { enfermedad: "Bronquitis", sintomas: "tos persistente flema expectoración mucosidad dificultad respirar silbido pecho dolor torácico" },
-  { enfermedad: "Neumonía", sintomas: "fiebre muy alta tos productiva flema amarilla verdosa dolor pecho respirar dificultad respiratoria escalofríos" },
-  { enfermedad: "Asma", sintomas: "dificultad respirar silbido tos opresión pecho falta aire respiración sibilante" },
-  { enfermedad: "Dermatitis atópica", sintomas: "picazón intensa enrojecimiento piel erupciones sarpullido resequedad" },
-  { enfermedad: "Psoriasis", sintomas: "enrojecimiento piel descamación placas blancas escamas gruesas" },
-  { enfermedad: "Acné", sintomas: "espinillas puntos negros enrojecimiento facial granos pústulas" },
-  { enfermedad: "Alergia estacional", sintomas: "estornudos congestión nasal picazón ocular lagrimeo rinitis" },
-  { enfermedad: "Urticaria", sintomas: "ronchas picazón enrojecimiento piel habones alergia" },
-  { enfermedad: "Angioedema", sintomas: "hinchazón labios lengua cara dificultad respirar inflamación" },
-  { enfermedad: "Diabetes tipo 1", sintomas: "sed excesiva polidipsia micción frecuente poliuria fatiga pérdida peso hambre" },
-  { enfermedad: "Diabetes tipo 2", sintomas: "sed excesiva micción frecuente visión borrosa cansancio heridas lentas cicatrizar" },
-  { enfermedad: "Hipertensión", sintomas: "dolor cabeza occipital mareos zumbido oídos visión borrosa palpitaciones presión alta" },
-  { enfermedad: "Hipotensión", sintomas: "mareos debilidad fatiga desmayo visión borrosa presión baja" },
-  { enfermedad: "Arritmia cardíaca", sintomas: "palpitaciones mareos dificultad respirar latidos irregulares taquicardia" },
-  { enfermedad: "Infarto miocardio", sintomas: "dolor pecho intenso brazo izquierdo sudoración fría náuseas opresión pecho" },
-  { enfermedad: "Angina pecho", sintomas: "dolor pecho presión opresión dificultad respirar dolor irradia brazo" },
-  { enfermedad: "Insuficiencia cardíaca", sintomas: "falta aire fatiga hinchazón piernas tobillos pies edema dificultad respirar acostado" },
-  { enfermedad: "Accidente cerebrovascular", sintomas: "debilidad repentina cara brazo pierna dificultad hablar mareos confusión pérdida equilibrio" },
-  { enfermedad: "Epilepsia", sintomas: "convulsiones pérdida consciencia temblores sacudidas espasmos" },
-  { enfermedad: "Parkinson", sintomas: "temblor manos rigidez muscular lentitud movimiento dificultad caminar" },
-  { enfermedad: "Alzheimer", sintomas: "pérdida memoria olvidos confusión desorientación dificultad reconocer personas" },
-  { enfermedad: "Esquizofrenia", sintomas: "alucinaciones voces delirios pensamientos paranoia desorganización pensamiento" },
-  { enfermedad: "Depresión", sintomas: "tristeza profunda persistente falta interés actividades fatiga cansancio insomnio pérdida apetito" },
-  { enfermedad: "Ansiedad", sintomas: "nerviosismo preocupación excesiva palpitaciones sudoración manos temblorosas tensión muscular inquietud miedo" },
-  { enfermedad: "Trastorno bipolar", sintomas: "cambios humor extremos euforia manía depresión energía fluctuante" },
-  { enfermedad: "TOC", sintomas: "pensamientos intrusivos obsesivos comportamientos repetitivos compulsivos ritual lavado manos" },
-  { enfermedad: "Fobia social", sintomas: "miedo extremo situaciones sociales ansiedad timidez evitación social" },
-  { enfermedad: "Insomnio", sintomas: "dificultad conciliar sueño despertar frecuente noche cansancio diurno fatiga irritabilidad" },
-  { enfermedad: "Apnea sueño", sintomas: "ronquidos fuertes pausas respiratorias dormir somnolencia diurna cansancio despertar" },
-  { enfermedad: "Narcolepsia", sintomas: "ataques sueño súbitos somnolencia extrema cataplejía debilidad muscular repentina" },
-  { enfermedad: "Cefalea tensional", sintomas: "dolor cabeza bilateral ambos lados presión banda aprieta cráneo tensión cuello" },
-  { enfermedad: "Vértigo posicional", sintomas: "vértigo mareos girar cabeza cambio posición sensación rotación" },
-  { enfermedad: "Enfermedad Menière", sintomas: "vértigo severo episódico tinnitus zumbido oídos pérdida audición náuseas" },
-  { enfermedad: "Hipoacusia", sintomas: "dificultad escuchar pérdida audición zumbido oídos sordera parcial" },
-  { enfermedad: "Otitis media", sintomas: "dolor oído intenso presión auditiva fiebre dificultad escuchar pus secreción" },
-  { enfermedad: "Otitis externa", sintomas: "dolor tocar oreja tirar pabellón picazón canal auditivo secreción oído nadador" },
-  { enfermedad: "Cataratas", sintomas: "visión borrosa nublada dificultad luz brillante deslumbramiento colores apagados" },
-  { enfermedad: "Glaucoma", sintomas: "dolor ocular intenso visión borrosa halos luces náuseas presión ocular" },
-  { enfermedad: "Retinopatía diabética", sintomas: "visión borrosa manchas flotantes puntos negros pérdida visión gradual" },
-  { enfermedad: "Miopía", sintomas: "dificultad ver lejos objetos distantes visión borrosa distancia entrecerrar ojos" },
-  { enfermedad: "Hipermetropía", sintomas: "dificultad ver cerca objetos cercanos fatiga ocular dolor ojos leer" },
-  { enfermedad: "Astigmatismo", sintomas: "visión borrosa distorsionada cualquier distancia fatiga ocular dolor cabeza" },
-  { enfermedad: "Conjuntivitis", sintomas: "enrojecimiento ocular ojo rojo picazón lagrimeo secreción legañas pegados párpados" },
-  { enfermedad: "Blefaritis", sintomas: "enrojecimiento inflamación párpados picazón ardor costras pestañas" },
-  { enfermedad: "Estrabismo", sintomas: "desalineación ojos bizquera visión doble ojos cruzados" },
-  { enfermedad: "Alopecia androgénica", sintomas: "pérdida cabello calvicie progresiva adelgazamiento pelo entradas" },
-  { enfermedad: "Alopecia areata", sintomas: "pérdida cabello circular parches calvos zonas sin pelo" },
-  { enfermedad: "Vitíligo", sintomas: "manchas blancas despigmentadas piel pérdida color pigmento" },
-  { enfermedad: "Melasma", sintomas: "manchas oscuras marrones cara hiperpigmentación mejillas frente" },
-  { enfermedad: "Rosácea", sintomas: "enrojecimiento facial permanente cara roja vasos visibles capilares" },
-  { enfermedad: "Caspa", sintomas: "descamación cuero cabelludo escamas blancas picazón resequedad" },
-  { enfermedad: "Piojos", sintomas: "picazón intensa cuero cabelludo liendres huevos rascado constante" },
-  { enfermedad: "Sarna", sintomas: "picazón intensa nocturna lesiones lineales surcos piel rascado" },
-  { enfermedad: "Pie atleta", sintomas: "picazón intensa dedos pie planta pies descamación piel agrietada olor desagradable ardor hongos dolor caminar pisar" },
-  { enfermedad: "Onicomicosis", sintomas: "engrosamiento uñas amarillas decoloración hongos uñas quebradizas" },
-  { enfermedad: "Candidiasis oral", sintomas: "manchas blancas lengua boca dolor ardor algodoncillo" },
-  { enfermedad: "Candidiasis vaginal", sintomas: "picazón vaginal intensa flujo blanco espeso ardor infección hongos" },
-  { enfermedad: "Balanitis", sintomas: "enrojecimiento inflamación glande pene picazón ardor secreción" },
-  { enfermedad: "Prostatitis", sintomas: "dolor pelvis perineal dificultad orinar ardor fiebre malestar" },
-  { enfermedad: "Infertilidad masculina", sintomas: "dificultad concebir embarazo disfunción eréctil bajo conteo esperma" },
-  { enfermedad: "Infertilidad femenina", sintomas: "irregularidades menstruales ciclos anormales dificultad concebir embarazo" },
-  { enfermedad: "Fibromas uterinos", sintomas: "períodos menstruales abundantes sangrado excesivo dolor pélvico presión" },
-  { enfermedad: "Endometriosis", sintomas: "dolor pélvico intenso períodos abundantes dolorosos cólicos severos" },
-  { enfermedad: "Quistes ováricos", sintomas: "dolor pélvico bajo vientre irregularidades menstruales hinchazón abdominal" },
-  { enfermedad: "Síndrome ovario poliquístico", sintomas: "irregularidades menstruales acné vello excesivo aumento peso quistes" },
-  { enfermedad: "Menopausia", sintomas: "sofocos calores repentinos sudores nocturnos irregularidades menstruales ausencia regla" },
-  { enfermedad: "Osteoporosis", sintomas: "fracturas frecuentes huesos frágiles pérdida altura dolor espalda" },
-  { enfermedad: "Artrosis", sintomas: "dolor articular rigidez rodillas caderas manos dedos pies pie tobillos tobillo crujido movimiento desgaste dolor caminar pisar apoyo" },
-  { enfermedad: "Artritis reumatoide", sintomas: "dolor articular simétrico rigidez matinal prolongada hinchazón articulaciones dedos manos muñecas inflamación" },
-  { enfermedad: "Gota", sintomas: "dolor articular súbito muy intenso dedo gordo pie pies tobillo enrojecimiento hinchazón calor articulación ataque nocturno cristales dolor caminar pisar" },
-  { enfermedad: "Lupus", sintomas: "erupción facial mariposa mejillas nariz dolor articular fiebre fatiga" },
-  { enfermedad: "Esclerodermia", sintomas: "engrosamiento piel dura rigidez dedos cara dificultad tragar" },
-  { enfermedad: "Síndrome Sjögren", sintomas: "sequedad extrema ocular bucal ojos secos boca seca dificultad tragar" },
-  { enfermedad: "Fibromialgia", sintomas: "dolor muscular generalizado puntos sensibles fatiga crónica rigidez cansancio" },
-  { enfermedad: "Polimiositis", sintomas: "debilidad muscular proximal hombros caderas inflamación dificultad subir escaleras" },
-  { enfermedad: "Dermatomiositis", sintomas: "debilidad muscular erupción violácea púrpura párpados mejillas inflamación" },
-  { enfermedad: "Síndrome fatiga crónica", sintomas: "fatiga severa extrema agotamiento dolor muscular cansancio persistente" },
-  { enfermedad: "Enfermedad celíaca", sintomas: "diarrea crónica pérdida peso dolor abdominal hinchazón intolerancia gluten" },
-  { enfermedad: "Enfermedad Crohn", sintomas: "diarrea crónica dolor abdominal cólicos pérdida peso sangre heces" },
-  { enfermedad: "Colitis ulcerosa", sintomas: "diarrea con sangre mucosa dolor abdominal cólicos urgencia evacuar" },
-  { enfermedad: "Síndrome intestino irritable", sintomas: "dolor abdominal cólicos diarrea estreñimiento alternados gases hinchazón" },
-  { enfermedad: "Gastroparesia", sintomas: "sensación plenitud saciedad temprana náuseas vómitos digestión lenta" },
-  { enfermedad: "Reflujo gastroesofágico", sintomas: "ardor pecho acidez estomacal regurgitación ácida sabor amargo boca dolor epigástrico" },
-  { enfermedad: "Úlcera péptica", sintomas: "dolor epigástrico ardor estómago náuseas vómitos sangre heces negras" },
-  { enfermedad: "Hepatitis A", sintomas: "ictericia coloración amarilla piel ojos fatiga dolor abdominal náuseas" },
-  { enfermedad: "Hepatitis B", sintomas: "ictericia amarillo piel ojos fatiga orina oscura náuseas" },
-  { enfermedad: "Hepatitis C", sintomas: "fatiga crónica dolor abdominal ictericia náuseas pérdida apetito" },
-  { enfermedad: "Cirrosis hepática", sintomas: "ascitis líquido abdomen ictericia encefalopatía confusión fatiga" },
-  { enfermedad: "Colangitis", sintomas: "fiebre escalofríos ictericia dolor cuadrante superior derecho abdomen" },
-  { enfermedad: "Cálculos biliares", sintomas: "dolor abdominal superior derecho severo cólico biliar náuseas vómitos" },
-  { enfermedad: "Pancreatitis aguda", sintomas: "dolor abdominal superior intenso irradiado espalda náuseas vómitos fiebre" },
-  { enfermedad: "Insuficiencia renal crónica", sintomas: "fatiga hinchazón tobillos pies anemia orina espumosa náuseas" },
-  { enfermedad: "Insuficiencia renal aguda", sintomas: "reducción orina oliguria hinchazón piernas fatiga confusión" },
-  { enfermedad: "Cálculos renales", sintomas: "dolor intenso costado espalda baja cólico renal náuseas hematuria sangre orina" },
-  { enfermedad: "Pielonefritis", sintomas: "fiebre alta escalofríos dolor costado espalda disuria ardor orinar" },
-  { enfermedad: "Cistitis", sintomas: "ardor orinar disuria frecuencia urinaria urgencia dolor bajo vientre orina turbia olor" },
-  { enfermedad: "Uretritis", sintomas: "ardor orinar disuria secreción uretral picazón uretra dolor" },
-  { enfermedad: "Prostatismo", sintomas: "dificultad iniciar orinar retención urinaria chorro débil goteo residual" },
-  { enfermedad: "Incontinencia urinaria", sintomas: "fugas orina involuntarias goteo pérdida control vejiga" },
-  { enfermedad: "Tuberculosis pulmonar", sintomas: "tos persistente más tres semanas hemoptisis sangre esputo pérdida peso sudores nocturnos fiebre" },
-  { enfermedad: "Tuberculosis extrapulmonar", sintomas: "linfadenopatía ganglios inflamados fiebre pérdida peso sudores nocturnos" },
-  { enfermedad: "Lepra", sintomas: "lesiones piel hipopigmentadas manchas claras anestesia pérdida sensibilidad" },
-  { enfermedad: "Malaria", sintomas: "fiebre intermitente cíclica escalofríos intensos sudoración profusa dolor cabeza" },
-  { enfermedad: "Dengue", sintomas: "fiebre muy alta repentina dolor retrorbitario ojos exantema sarpullido dolor articular" },
-  { enfermedad: "Fiebre amarilla", sintomas: "fiebre alta ictericia coloración amarilla hemorragia sangrado náuseas" },
-  { enfermedad: "Zika", sintomas: "fiebre leve exantema sarpullido conjuntivitis ojos rojos dolor articular" },
-  { enfermedad: "Viruela simio", sintomas: "lesiones vesículas piel fiebre linfadenopatía ganglios inflamados erupción" },
-  { enfermedad: "COVID-19", sintomas: "tos seca fiebre pérdida olfato gusto fatiga dificultad respirar dolor garganta" },
-  { enfermedad: "Sarampión", sintomas: "fiebre alta erupción maculopapular manchas rojas tos conjuntivitis" },
-  { enfermedad: "Rubéola", sintomas: "erupción rosada sarpullido leve fiebre baja ganglios inflamados" },
-  { enfermedad: "Varicela", sintomas: "vesículas ampollas fiebre comezón intensa sarpullido costras" },
-  { enfermedad: "Herpes zóster", sintomas: "vesículas ampollas unilateral dermatoma banda dolor neuropático ardor intenso" },
-  { enfermedad: "Herpes simple", sintomas: "vesículas ampollas labios boca genital dolor ardor picazón" },
-  { enfermedad: "VIH/SIDA", sintomas: "linfadenopatía ganglios inflamados fiebre persistente sudores nocturnos pérdida peso" },
-  { enfermedad: "Mononucleosis", sintomas: "fiebre persistente faringitis dolor garganta linfadenopatía ganglios cuello fatiga" },
-  { enfermedad: "Paperas", sintomas: "hinchazón inflamación glándulas salivales parótidas fiebre dolor mandíbula" },
-  { enfermedad: "Tos ferina", sintomas: "ataques tos violentos paroxísticos estridor inspiratorio sonido silbido" },
-  { enfermedad: "Difteria", sintomas: "membrana gris pseudodiftérica garganta dificultad respirar tragar fiebre" },
-  { enfermedad: "Tétanos", sintomas: "rigidez muscular trismo mandíbula cerrada convulsiones espasmos musculares" },
-  { enfermedad: "Poliomielitis", sintomas: "fiebre parálisis flácida debilidad muscular asimétrica dificultad mover extremidades" },
-  { enfermedad: "Rabia", sintomas: "hidrofobia miedo agua alucinaciones agresividad parálisis convulsiones" },
-  { enfermedad: "Gonorrea", sintomas: "secreción uretral purulenta amarilla verdosa ardor orinar disuria" },
-  { enfermedad: "Sífilis", sintomas: "úlcera indurada chancro indolora exantema sarpullido palmas plantas" },
-  { enfermedad: "Clamidia", sintomas: "secreción uretral clara ardor orinar disuria cervicitis dolor pélvico" },
-  { enfermedad: "Fascitis plantar", sintomas: "dolor intenso talón planta pie primeros pasos mañana punzante caminar dificultad pisar" },
-  { enfermedad: "Esguince tobillo", sintomas: "dolor tobillo hinchazón inflamación moretón morado dificultad caminar apoyo pie torcedura" },
-  { enfermedad: "Tendinitis", sintomas: "dolor tendón movimiento inflamación rigidez debilidad muñeca codo hombro tobillo rodilla" }
+  // MIGRAÑA
+  { enfermedad: "Migraña", sintomas: "dolor cabeza intenso pulsante late martillazo lado cabeza empeora luz sonido nauseas vomitos dura horas dias" },
+  { enfermedad: "Migraña", sintomas: "duele horrible cabeza lado derecho late fuerte soporto luz ruido ganas vomitar" },
+  { enfermedad: "Migraña", sintomas: "dolor cabeza intenso lado izquierdo late mucho luz molesta nauseas" },
+  { enfermedad: "Migraña", sintomas: "dolor cabeza pulsante unilateral fotofobia fonofobia nauseas vomitos aura visual" },
+  
+  // CEFALEA TENSIONAL
+  { enfermedad: "Cefalea tensional", sintomas: "dolor cabeza ambos lados banda aprieta presion constante late mejora descanso estres tension cuello hombros" },
+  { enfermedad: "Cefalea tensional", sintomas: "duele cabeza dos lados presion banda apretada late mejora descanso" },
+  { enfermedad: "Cefalea tensional", sintomas: "dolor cabeza bilateral presion tension cuello fotofobia nauseas leve moderado" },
+  
+  // SINUSITIS
+  { enfermedad: "Sinusitis aguda", sintomas: "dolor cabeza frontal presion facial congestion nasal secrecion amarilla verdosa moco espeso dolor mejillas frente pomulos fiebre" },
+  { enfermedad: "Sinusitis aguda", sintomas: "duele frente pomulos nariz tapada moco amarillo verdoso presion cara" },
+  { enfermedad: "Sinusitis aguda", sintomas: "presion facial dolor senos paranasales congestion nasal secrecion purulenta fiebre dolor aumenta inclinar cabeza" },
+  
+  // GRIPE
+  { enfermedad: "Gripe", sintomas: "fiebre alta escalofrios intensos dolor cuerpo musculos articulaciones fatiga extrema tos seca garganta irritada congestion nasal inicio subito" },
+  { enfermedad: "Gripe", sintomas: "mucha fiebre escalofrios duele cuerpo cansado tos seca duele garganta" },
+  { enfermedad: "Gripe", sintomas: "fiebre alta repente duelen musculos articulaciones tos seca cansancio escalofrios" },
+  { enfermedad: "Gripe", sintomas: "fiebre elevada dolor muscular generalizado malestar general tos seca faringitis congestion inicio brusco" },
+  
+  // RESFRIADO COMÚN
+  { enfermedad: "Resfriado común", sintomas: "congestion nasal moqueo transparente acuoso estornudos frecuentes tos leve dolor garganta leve fiebre alta inicio gradual sintomas leves moderados" },
+  { enfermedad: "Resfriado común", sintomas: "nariz tapada moco transparente estornudo mucho tos ligera duele poco garganta fiebre alta empezo poco" },
+  { enfermedad: "Resfriado común", sintomas: "rinorrea clara estornudos tos leve odinofagia leve afebril inicio progresivo" },
+  
+  // COVID-19
+  { enfermedad: "COVID-19", sintomas: "fiebre tos seca persistente perdida total olfato gusto anosmia ageusia huelo nada siento sabores dificultad respirar falta aire disnea fatiga dolor garganta" },
+  { enfermedad: "COVID-19", sintomas: "fiebre tos seca puedo oler nada siento sabores comida cuesta respirar falta aire cansado" },
+  { enfermedad: "COVID-19", sintomas: "tos seca fiebre perdida olfato gusto dificultad respiratoria fatiga mialgias cefalea" },
+  
+  // GASTROENTERITIS
+  { enfermedad: "Gastroenteritis", sintomas: "diarrea liquida frecuente dolor abdominal estomago barriga colicos retortijones nauseas vomitos deshidratacion sed excesiva debilidad fiebre leve escalofrios" },
+  { enfermedad: "Gastroenteritis", sintomas: "diarrea liquida varias veces duele estomago colicos retortijones nauseas vomite sed debilidad frio" },
+  { enfermedad: "Gastroenteritis", sintomas: "duele estomago diarrea nauseas escalofrios fiebre baja dolor abdominal colicos" },
+  { enfermedad: "Gastroenteritis", sintomas: "dolor abdominal diarrea acuosa nauseas vomitos fiebre leve deshidratacion malestar general" },
+  
+  // FARINGITIS
+  { enfermedad: "Faringitis", sintomas: "dolor garganta intenso ardor tragar dificultad deglutir odinofagia amigdalas inflamadas rojas fiebre ganglios cuello inflamados" },
+  { enfermedad: "Faringitis", sintomas: "duele mucho garganta tragar amigdalas rojas inflamadas fiebre ganglios cuello hinchados" },
+  { enfermedad: "Faringitis", sintomas: "odinofagia intensa eritema faringeo adenopatias cervicales fiebre disfagia" },
+  
+  // BRONQUITIS
+  { enfermedad: "Bronquitis", sintomas: "tos persistente productiva flema expectoracion mucosidad amarilla verdosa dificultad respirar silbido pecho sibilancias dolor toracico toser" },
+  { enfermedad: "Bronquitis", sintomas: "tos mucha flema verde amarilla silba pecho duele toser dificultad respirar" },
+  { enfermedad: "Bronquitis", sintomas: "tos productiva expectoracion purulenta sibilancias disnea dolor toracico" },
+  
+  // NEUMONÍA
+  { enfermedad: "Neumonía", sintomas: "fiebre muy alta treinta nueve grados tos productiva flema amarilla verdosa herrumbrosa dolor pecho respirar dificultad respiratoria disnea escalofrios intensos" },
+  { enfermedad: "Neumonía", sintomas: "fiebre muy alta treinta nueve tos flema amarilla duele pecho respirar falta aire escalofrios fuertes" },
+  { enfermedad: "Neumonía", sintomas: "fiebre elevada tos productiva esputo purulento dolor pleuritico disnea escalofrios" },
+  
+  // ASMA
+  { enfermedad: "Asma", sintomas: "dificultad respirar severa silbido pecho sibilancias tos seca nocturna opresion toracica pecho apretado falta aire crisis respiratoria" },
+  { enfermedad: "Asma", sintomas: "cuesta respirar silba pecho pecho apretado falta aire tos seca noche" },
+  { enfermedad: "Asma", sintomas: "disnea sibilancias tos nocturna opresion toracica broncoespasmo" },
+  
+  // INFARTO MIOCARDIO
+  { enfermedad: "Infarto miocardio", sintomas: "dolor pecho intenso opresion peso elefante aplastante irradia brazo izquierdo mandibula cuello espalda sudoracion fria profusa nauseas vomitos dificultad respirar disnea sensacion muerte inminente" },
+  { enfermedad: "Infarto miocardio", sintomas: "dolor fuerte pecho aplastara duele brazo izquierdo mandibula sudo frio nauseas falta aire voy morir" },
+  { enfermedad: "Infarto miocardio", sintomas: "dolor toracico opresivo irradiado miembro superior izquierdo diaforesis fria nauseas disnea ansiedad" },
+  
+  // ANGINA PECHO
+  { enfermedad: "Angina pecho", sintomas: "dolor pecho presion opresion durante esfuerzo fisico ejercicio irradia brazo izquierdo mejora reposo dura pocos minutos dificultad respirar" },
+  { enfermedad: "Angina pecho", sintomas: "duele pecho presion hago ejercicio duele brazo izquierdo mejora descanso" },
+  { enfermedad: "Angina pecho", sintomas: "dolor toracico opresivo desencadenado esfuerzo irradiado alivio reposo" },
+  
+  // ANSIEDAD
+  { enfermedad: "Ansiedad", sintomas: "palpitaciones corazon acelerado taquicardia sudoracion profusa manos temblorosas temblor sensacion falta aire hiperventilacion opresion pecho mareo vertigo miedo intenso panico causa aparente preocupacion excesiva" },
+  { enfermedad: "Ansiedad", sintomas: "corazon late rapido sudo mucho tiemblan manos siento falta aire opresion pecho miedo panico razon" },
+  { enfermedad: "Ansiedad", sintomas: "taquicardia sudoracion temblor disnea opresion toracica mareo panico preocupacion" },
+  
+  // DEPRESIÓN
+  { enfermedad: "Depresión", sintomas: "tristeza profunda persistente semanas falta interes actividades antes disfrutaba anhedonia fatiga cansancio extremo insomnio hipersomnia perdida apetito peso pensamientos muerte suicidas" },
+  { enfermedad: "Depresión", sintomas: "siento triste tiempo ganas hacer nada disfruto antes gustaba siempre cansado puedo dormir duermo mucho apetito" },
+  { enfermedad: "Depresión", sintomas: "animo deprimido persistente anhedonia astenia insomnio anorexia ideacion suicida" },
+  
+  // DIABETES TIPO 2
+  { enfermedad: "Diabetes tipo 2", sintomas: "sed excesiva polidipsia mucha sed miccion frecuente poliuria orinar mucho vision borrosa cansancio fatiga heridas tardan cicatrizar infecciones frecuentes" },
+  { enfermedad: "Diabetes tipo 2", sintomas: "mucha sed tiempo orino mucho veo borroso cansado heridas tardan sanar" },
+  { enfermedad: "Diabetes tipo 2", sintomas: "polidipsia poliuria vision borrosa astenia cicatrizacion lenta infecciones recurrentes" },
+  
+  // HIPERTENSIÓN
+  { enfermedad: "Hipertensión", sintomas: "dolor cabeza occipital nuca mareos vertigo zumbido oidos tinnitus vision borrosa palpitaciones presion arterial alta ciento cuarenta noventa" },
+  { enfermedad: "Hipertensión", sintomas: "duele cabeza nuca mareos zumbido oidos veo borroso palpitaciones" },
+  { enfermedad: "Hipertensión", sintomas: "cefalea occipital mareos tinnitus vision borrosa palpitaciones" },
+  
+  // HIPOTENSIÓN
+  { enfermedad: "Hipotensión", sintomas: "mareos frecuentes vertigo debilidad fatiga desmayo sincope vision borrosa presion arterial baja menos noventa sesenta" },
+  { enfermedad: "Hipotensión", sintomas: "muchos mareos siento debil muy cansado veo borroso desmayado" },
+  { enfermedad: "Hipotensión", sintomas: "mareos sincope astenia vision borrosa hipotension" },
+  
+  // ARTRITIS REUMATOIDE
+  { enfermedad: "Artritis reumatoide", sintomas: "dolor articular simetrico ambas manos munecas rodillas rigidez matinal prolongada hora hinchazon articulaciones calor enrojecimiento inflamacion dedos deformidad" },
+  { enfermedad: "Artritis reumatoide", sintomas: "duelen articulaciones ambas manos munecas igual amanezco manos rigidas hora hinchadas rojas calientes" },
+  { enfermedad: "Artritis reumatoide", sintomas: "dolor articular simetrico rigidez matinal prolongada tumefaccion articular deformidades" },
+  
+  // ARTROSIS
+  { enfermedad: "Artrosis", sintomas: "dolor articular mecanico rodillas caderas manos dedos pies tobillos empeora movimiento actividad mejora reposo rigidez breve menos treinta minutos crujido articular crepitacion" },
+  { enfermedad: "Artrosis", sintomas: "duelen rodillas caderas camino hago actividad mejora descanso rigidez manana dura poco articulaciones crujen" },
+  { enfermedad: "Artrosis", sintomas: "dolor articular mecanico rigidez breve crepitacion limitacion movilidad" },
+  
+  // GOTA
+  { enfermedad: "Gota", sintomas: "dolor articular subito muy intenso insoportable dedo gordo pie podagra generalmente nocturno enrojecimiento intenso hinchazon marcada calor articulacion afectada puedo tocar apoyar cristales acido urico" },
+  { enfermedad: "Gota", sintomas: "desperto dolor horrible dedo gordo pie insoportable muy rojo hinchado caliente puedo tocarlo apoyar pie" },
+  { enfermedad: "Gota", sintomas: "dolor articular agudo severo dedo gordo pie eritema edema calor nocturno" },
+  
+  // CISTITIS
+  { enfermedad: "Cistitis", sintomas: "ardor intenso orinar disuria frecuencia urinaria necesidad urgente orinar urgencia dolor bajo vientre hipogastrio orina turbia mal olor veces sangre hematuria" },
+  { enfermedad: "Cistitis", sintomas: "arde horrible orinar bano rato urgencia duele bajo ombligo orina turbia huele mal" },
+  { enfermedad: "Cistitis", sintomas: "disuria polaquiuria urgencia urinaria dolor suprapubico orina turbia" },
+  
+  // PIELONEFRITIS
+  { enfermedad: "Pielonefritis", sintomas: "fiebre alta treinta ocho escalofrios intensos dolor costado espalda baja lumbar unilateral ardor orinar disuria nauseas vomitos malestar general" },
+  { enfermedad: "Pielonefritis", sintomas: "fiebre alta escalofrios duele costado espalda baja arde orinar nauseas" },
+  { enfermedad: "Pielonefritis", sintomas: "fiebre escalofrios dolor lumbar disuria nauseas puno percusion positiva" },
+  
+  // PANCREATITIS AGUDA
+  { enfermedad: "Pancreatitis aguda", sintomas: "dolor abdominal superior epigastrio muy intenso penetrante irradia espalda cinturon nauseas vomitos abundantes fiebre distension abdominal empeora acostarse mejora sentarse inclinado adelante" },
+  { enfermedad: "Pancreatitis aguda", sintomas: "duele horrible parte alta estomago penetrante hacia espalda cinturon muchas nauseas vomito mucho fiebre mejora siento inclinado adelante" },
+  { enfermedad: "Pancreatitis aguda", sintomas: "dolor epigastrico intenso irradiado dorsal nauseas vomitos fiebre distension" },
+  
+  // APENDICITIS
+  { enfermedad: "Apendicitis", sintomas: "dolor abdominal inicio periumbilical alrededor ombligo luego migra fosa iliaca derecha parte baja derecha abdomen nauseas vomitos fiebre perdida apetito dolor aumenta movimiento tos" },
+  { enfermedad: "Apendicitis", sintomas: "empezo dolor ombligo ahora baja derecha abdomen nauseas fiebre hambre duele moverme toser" },
+  { enfermedad: "Apendicitis", sintomas: "dolor periumbilical migra fosa iliaca derecha nauseas vomitos fiebre anorexia" },
+  
+  // DERMATITIS ATÓPICA
+  { enfermedad: "Dermatitis atópica", sintomas: "picazon intensa prurito insoportable enrojecimiento piel eritema erupciones eccema sarpullido resequedad descamacion xerosis" },
+  { enfermedad: "Dermatitis atópica", sintomas: "pica mucho piel roja erupciones sarpullido seca descama" },
+  { enfermedad: "Dermatitis atópica", sintomas: "prurito intenso eritema erupciones xerosis eccema" },
+  
+  // PSORIASIS
+  { enfermedad: "Psoriasis", sintomas: "enrojecimiento piel placas eritematosas descamacion escamas blancas plateadas gruesas placas bien definidas" },
+  { enfermedad: "Psoriasis", sintomas: "piel roja placas descamacion escamas blancas gruesas" },
+  { enfermedad: "Psoriasis", sintomas: "placas eritematosas escamas plateadas bien delimitadas" },
+  
+  // ACNÉ
+  { enfermedad: "Acné", sintomas: "espinillas comedones puntos negros enrojecimiento facial granos pustulas papulas cara pecho espalda" },
+  { enfermedad: "Acné", sintomas: "espinillas puntos negros granos cara enrojecimiento pecho espalda" },
+  { enfermedad: "Acné", sintomas: "comedones pustulas papulas eritema facial" },
+  
+  // ALERGIA ESTACIONAL
+  { enfermedad: "Alergia estacional", sintomas: "estornudos frecuentes congestion nasal rinorrea picazon ocular prurito ojos lagrimeo epifora rinitis" },
+  { enfermedad: "Alergia estacional", sintomas: "estornudo mucho nariz tapada pican ojos lagrimean moqueo" },
+  { enfermedad: "Alergia estacional", sintomas: "rinitis estornudos rinorrea prurito ocular lagrimeo" },
+  
+  // URTICARIA
+  { enfermedad: "Urticaria", sintomas: "ronchas habones picazon intensa prurito enrojecimiento piel lesiones elevadas reaccion alergica" },
+  { enfermedad: "Urticaria", sintomas: "ronchas piel pican mucho rojas elevadas" },
+  { enfermedad: "Urticaria", sintomas: "habones prurito intenso eritema lesiones elevadas" },
+  
+  // CONJUNTIVITIS
+  { enfermedad: "Conjuntivitis", sintomas: "enrojecimiento ocular ojo rojo hiperemia conjuntival picazon lagrimeo secrecion leganas parpados pegados" },
+  { enfermedad: "Conjuntivitis", sintomas: "ojo rojo pica lagrimea secrecion leganas parpados pegados" },
+  { enfermedad: "Conjuntivitis", sintomas: "hiperemia conjuntival prurito lagrimeo secrecion" },
+  
+  // MIOPÍA
+  { enfermedad: "Miopía", sintomas: "dificultad ver lejos objetos distantes vision borrosa distancia entrecerrar ojos para enfocar" },
+  { enfermedad: "Miopía", sintomas: "veo borroso lejos entrecierro ojos enfocar distancia" },
+  { enfermedad: "Miopía", sintomas: "vision borrosa lejana dificultad ver distancia" },
+  
+  // OTITIS MEDIA
+  { enfermedad: "Otitis media", sintomas: "dolor oido intenso otalgia presion auditiva fiebre dificultad escuchar secrecion purulenta pus" },
+  { enfermedad: "Otitis media", sintomas: "duele mucho oido presion fiebre escucho mal secrecion pus" },
+  { enfermedad: "Otitis media", sintomas: "otalgia intensa fiebre hipoacusia secrecion purulenta" },
+  
+  // VÉRTIGO POSICIONAL
+  { enfermedad: "Vértigo posicional", sintomas: "vertigo intenso mareos severos girar cabeza cambio posicion sensacion rotacion habitacion gira" },
+  { enfermedad: "Vértigo posicional", sintomas: "mareo intenso giro cabeza cambio posicion habitacion gira" },
+  { enfermedad: "Vértigo posicional", sintomas: "vertigo posicional mareo cambios posturales" },
+  
+  // INSOMNIO
+  { enfermedad: "Insomnio", sintomas: "dificultad conciliar sueno tardar dormir despertar frecuente noche despertares multiples cansancio diurno fatiga irritabilidad" },
+  { enfermedad: "Insomnio", sintomas: "puedo dormir despierto mucho noche cansado dia irritable" },
+  { enfermedad: "Insomnio", sintomas: "dificultad conciliar sueno despertares nocturnos fatiga diurna" },
+  
+  // HERPES ZÓSTER
+  { enfermedad: "Herpes zóster", sintomas: "vesiculas ampollas dolorosas unilateral solo lado dermatoma banda distribucion dolor neuropatico ardor intenso quemazon antes aparicion lesiones" },
+  { enfermedad: "Herpes zóster", sintomas: "ampollas dolorosas lado banda arde mucho quema antes salieron" },
+  { enfermedad: "Herpes zóster", sintomas: "vesiculas unilaterales dolor neuropatico ardor dermatoma" },
+  
+  // VARICELA
+  { enfermedad: "Varicela", sintomas: "vesiculas ampollas diseminadas todo cuerpo fiebre comezon intensa prurito sarpullido erupcion costras" },
+  { enfermedad: "Varicela", sintomas: "ampollas todo cuerpo fiebre pica mucho sarpullido costras" },
+  { enfermedad: "Varicela", sintomas: "exantema vesicular generalizado fiebre prurito costras" },
+  
+  // HEPATITIS A
+  { enfermedad: "Hepatitis A", sintomas: "ictericia coloracion amarilla piel ojos fatiga intensa dolor abdominal cuadrante superior derecho nauseas vomitos orina oscura coluria heces claras acolia" },
+  { enfermedad: "Hepatitis A", sintomas: "piel ojos amarillos cansancio duele lado derecho arriba nauseas orina oscura heces claras" },
+  { enfermedad: "Hepatitis A", sintomas: "ictericia fatiga dolor hipocondrio derecho coluria acolia" },
+  
+  // CIRROSIS HEPÁTICA
+  { enfermedad: "Cirrosis hepática", sintomas: "ascitis liquido abdomen distension abdominal ictericia coloracion amarilla encefalopatia confusion mental fatiga edema piernas" },
+  { enfermedad: "Cirrosis hepática", sintomas: "abdomen hinchado liquido amarillo piel ojos confusion cansado piernas hinchadas" },
+  { enfermedad: "Cirrosis hepática", sintomas: "ascitis ictericia encefalopatia edema fatiga" },
+  
+  // REFLUJO GASTROESOFÁGICO
+  { enfermedad: "Reflujo gastroesofágico", sintomas: "ardor pecho retroesternal pirosis acidez estomacal regurgitacion acida sabor amargo boca dolor epigastrico empeora acostarse" },
+  { enfermedad: "Reflujo gastroesofágico", sintomas: "arde pecho acidez estomago sabor amargo boca empeora acostarme" },
+  { enfermedad: "Reflujo gastroesofágico", sintomas: "pirosis regurgitacion acida dolor retroesternal empeora decubito" },
+  
+  // ÚLCERA PÉPTICA
+  { enfermedad: "Úlcera péptica", sintomas: "dolor epigastrico ardor estomago hambre dolorosa mejora comer empeora horas despues nauseas vomitos sangre heces negras melena" },
+  { enfermedad: "Úlcera péptica", sintomas: "arde estomago hambre duele mejora como empeora horas nauseas heces negras" },
+  { enfermedad: "Úlcera péptica", sintomas: "dolor epigastrico ardor mejora ingesta melena" },
+  
+  // ENFERMEDAD CELÍACA
+  { enfermedad: "Enfermedad celíaca", sintomas: "diarrea cronica persistente perdida peso adelgazamiento dolor abdominal hinchazon distension intolerancia gluten trigo cebada" },
+  { enfermedad: "Enfermedad celíaca", sintomas: "diarrea siempre bajo peso duele abdomen hinchado como gluten trigo" },
+  { enfermedad: "Enfermedad celíaca", sintomas: "diarrea cronica perdida peso distension intolerancia gluten" },
+  
+  // SÍNDROME INTESTINO IRRITABLE
+  { enfermedad: "Síndrome intestino irritable", sintomas: "dolor abdominal colicos diarrea estrenimiento alternados cambios habito intestinal gases hinchazon distension mejora defecar" },
+  { enfermedad: "Síndrome intestino irritable", sintomas: "duele abdomen veces diarrea veces estrenido muchos gases hinchado mejora defecar" },
+  { enfermedad: "Síndrome intestino irritable", sintomas: "dolor abdominal alteracion habito intestinal distension mejora defecacion" },
+  
+  // CÁLCULOS RENALES
+  { enfermedad: "Cálculos renales", sintomas: "dolor intenso costado espalda baja lumbar colico renal insoportable ondulante nauseas vomitos hematuria sangre orina" },
+  { enfermedad: "Cálculos renales", sintomas: "dolor horrible costado espalda baja ondas insoportable nauseas sangre orina" },
+  { enfermedad: "Cálculos renales", sintomas: "colico renal dolor lumbar intenso hematuria nauseas" },
+  
+  // INSUFICIENCIA RENAL CRÓNICA
+  { enfermedad: "Insuficiencia renal crónica", sintomas: "fatiga extrema hinchazon tobillos pies edema anemia palidez orina espumosa proteinuria nauseas perdida apetito" },
+  { enfermedad: "Insuficiencia renal crónica", sintomas: "cansancio extremo tobillos pies hinchados palido orina espuma nauseas apetito" },
+  { enfermedad: "Insuficiencia renal crónica", sintomas: "fatiga edema anemia orina espumosa nauseas" },
+  
+  // OSTEOPOROSIS
+  { enfermedad: "Osteoporosis", sintomas: "fracturas frecuentes espontaneas huesos fragiles perdida altura estatura dolor espalda cronico" },
+  { enfermedad: "Osteoporosis", sintomas: "fracturo facil huesos fragiles perdi estatura duele espalda siempre" },
+  { enfermedad: "Osteoporosis", sintomas: "fracturas espontaneas huesos fragiles perdida estatura" },
+  
+  // FIBROMIALGIA
+  { enfermedad: "Fibromialgia", sintomas: "dolor muscular generalizado todo cuerpo puntos sensibles dolorosos fatiga cronica rigidez matinal cansancio sueno reparador" },
+  { enfermedad: "Fibromialgia", sintomas: "duele todo cuerpo puntos dolorosos siempre cansado rigido manana duermo bien" },
+  { enfermedad: "Fibromialgia", sintomas: "dolor muscular generalizado puntos dolorosos fatiga rigidez" },
+  
+  // LUPUS
+  { enfermedad: "Lupus", sintomas: "erupcion facial forma mariposa mejillas nariz eritema malar dolor articular fiebre fatiga fotosensibilidad" },
+  { enfermedad: "Lupus", sintomas: "erupcion cara mariposa mejillas nariz duelen articulaciones fiebre cansado sol empeora" },
+  { enfermedad: "Lupus", sintomas: "eritema malar artralgia fiebre fatiga fotosensibilidad" },
+  
+  // EPILEPSIA
+  { enfermedad: "Epilepsia", sintomas: "convulsiones crisis convulsiva perdida consciencia desmayo temblores sacudidas movimientos involuntarios espasmos" },
+  { enfermedad: "Epilepsia", sintomas: "convulsiones pierdo consciencia desmayo tiemblo sacudidas movimientos controlar" },
+  { enfermedad: "Epilepsia", sintomas: "crisis convulsivas perdida consciencia movimientos tonicoclonicos" },
+  
+  // PARKINSON
+  { enfermedad: "Parkinson", sintomas: "temblor manos reposo rigidez muscular lentitud movimiento bradicinesia dificultad caminar marcha arrastrando pies" },
+  { enfermedad: "Parkinson", sintomas: "tiemblan manos quieto rigido muevo lento dificultad caminar arrastro pies" },
+  { enfermedad: "Parkinson", sintomas: "temblor reposo rigidez bradicinesia marcha parkinsoniana" },
+  
+  // ALZHEIMER
+  { enfermedad: "Alzheimer", sintomas: "perdida memoria reciente olvidos frecuentes confusion mental desorientacion tiempo lugar dificultad reconocer personas familiares" },
+  { enfermedad: "Alzheimer", sintomas: "olvido cosas recientes confundo tiempo lugar reconozco personas familiares" },
+  { enfermedad: "Alzheimer", sintomas: "deterioro cognitivo perdida memoria confusion desorientacion" },
+  
+  // ACCIDENTE CEREBROVASCULAR
+  { enfermedad: "Accidente cerebrovascular", sintomas: "debilidad repentina subita cara brazo pierna solo lado asimetria facial dificultad hablar disartria mareos confusion perdida equilibrio" },
+  { enfermedad: "Accidente cerebrovascular", sintomas: "repente debil cara brazo pierna lado torcida cara hablar bien mareado confuso equilibrio" },
+  { enfermedad: "Accidente cerebrovascular", sintomas: "hemiparesia subita asimetria facial disartria confusion ataxia" },
+  
+  // TUBERCULOSIS PULMONAR
+  { enfermedad: "Tuberculosis pulmonar", sintomas: "tos persistente tres semanas hemoptisis sangre esputo perdida peso adelgazamiento sudores nocturnos profusos fiebre vespertina" },
+  { enfermedad: "Tuberculosis pulmonar", sintomas: "tos tres semanas sangre flema bajo peso sudo mucho noche fiebre tarde" },
+  { enfermedad: "Tuberculosis pulmonar", sintomas: "tos cronica hemoptisis perdida peso sudores nocturnos fiebre" },
+  
+  // MALARIA
+  { enfermedad: "Malaria", sintomas: "fiebre intermitente ciclica cada cuarenta ocho setenta dos horas escalofrios intensos temblores sudoracion profusa dolor cabeza" },
+  { enfermedad: "Malaria", sintomas: "fiebre cada dos tres dias escalofrios intensos tiemblo sudo mucho duele cabeza" },
+  { enfermedad: "Malaria", sintomas: "fiebre ciclica escalofrios sudoracion profusa cefalea" },
+  
+  // DENGUE
+  { enfermedad: "Dengue", sintomas: "fiebre muy alta repentina quebrantahuesos dolor retrorbitario detras ojos exantema sarpullido dolor articular muscular intenso" },
+  { enfermedad: "Dengue", sintomas: "fiebre muy alta repente duelen huesos detras ojos sarpullido duelen articulaciones musculos" },
+  { enfermedad: "Dengue", sintomas: "fiebre alta quebrantahuesos dolor retrorbitario exantema mialgias" },
+  
+  // VIH/SIDA
+  { enfermedad: "VIH/SIDA", sintomas: "linfadenopatia ganglios inflamados persistentes fiebre prolongada mes sudores nocturnos perdida peso involuntaria fatiga infecciones oportunistas" },
+  { enfermedad: "VIH/SIDA", sintomas: "ganglios inflamados fiebre mes sudo noche bajo peso involuntario cansado infecciones frecuentes" },
+  { enfermedad: "VIH/SIDA", sintomas: "linfadenopatia fiebre prolongada sudores nocturnos perdida peso fatiga" },
+  
+  // MONONUCLEOSIS
+  { enfermedad: "Mononucleosis", sintomas: "fiebre persistente prolongada faringitis dolor garganta intenso linfadenopatia ganglios cuello muy inflamados fatiga extrema esplenomegalia" },
+  { enfermedad: "Mononucleosis", sintomas: "fiebre mucho tiempo duele garganta intenso ganglios cuello hinchados cansado extremo" },
+  { enfermedad: "Mononucleosis", sintomas: "fiebre prolongada faringitis linfadenopatia fatiga esplenomegalia" },
+  
+  // GONORREA
+  { enfermedad: "Gonorrea", sintomas: "secrecion uretral purulenta amarilla verdosa espesa abundante ardor orinar disuria hombres pene mujeres flujo vaginal" },
+  { enfermedad: "Gonorrea", sintomas: "secrecion pene amarilla verdosa espesa arde orinar" },
+  { enfermedad: "Gonorrea", sintomas: "secrecion purulenta disuria flujo amarillento" },
+  
+  // SÍFILIS
+  { enfermedad: "Sífilis", sintomas: "ulcera indurada chancro indolora duele genitales exantema sarpullido palmas manos plantas pies" },
+  { enfermedad: "Sífilis", sintomas: "ulcera genitales duele sarpullido manos pies" },
+  { enfermedad: "Sífilis", sintomas: "chancro indoloro exantema palmoplantar" },
+  
+  // FASCITIS PLANTAR
+  { enfermedad: "Fascitis plantar", sintomas: "dolor intenso talon planta pie primeros pasos manana punzante caminar dificultad pisar apoyo talon" },
+  { enfermedad: "Fascitis plantar", sintomas: "duele horrible talon primeros pasos manana punzante caminar pisar" },
+  { enfermedad: "Fascitis plantar", sintomas: "dolor talon matinal punzante dificultad apoyo" },
+  
+  // ESGUINCE TOBILLO
+  { enfermedad: "Esguince tobillo", sintomas: "dolor tobillo agudo hinchazon inflamacion edema moreton equimosis morado dificultad caminar apoyo pie torcedura trauma" },
+  { enfermedad: "Esguince tobillo", sintomas: "duele tobillo hinchado morado dificultad caminar apoyar torci" },
+  { enfermedad: "Esguince tobillo", sintomas: "dolor tobillo edema equimosis dificultad apoyo trauma" },
+  
+  // TENDINITIS
+  { enfermedad: "Tendinitis", sintomas: "dolor tendon movimiento especifico inflamacion rigidez debilidad muneca codo hombro tobillo rodilla uso repetitivo" },
+  { enfermedad: "Tendinitis", sintomas: "duele tendon muevo inflamado rigido debil muneca codo hombro movimiento repetido" },
+  { enfermedad: "Tendinitis", sintomas: "dolor tendinoso movimiento inflamacion rigidez" },
 ];
 
-// ====================== ENTRENAR SOLO 2 ALGORITMOS ======================
-
-// 1. NAIVE BAYES
-const { BayesClassifier } = natural;
-const nbClassifier = new BayesClassifier();
-diagnosticos.forEach(({ enfermedad, sintomas }) => {
-  nbClassifier.addDocument(sintomas, enfermedad);
-});
-nbClassifier.train();
-console.log('✅ Naive Bayes entrenado');
-
-// 2. LOGISTIC REGRESSION
+// ====================== ENTRENAR ALGORITMO ======================
 const { LogisticRegressionClassifier } = natural;
-const lrClassifier = new LogisticRegressionClassifier();
-diagnosticos.forEach(({ enfermedad, sintomas }) => {
-  lrClassifier.addDocument(sintomas, enfermedad);
-});
-lrClassifier.train();
-console.log('✅ Logistic Regression entrenado');
 
-console.log(`\n🎯 Sistema listo con 2 algoritmos supervisados y ${diagnosticos.length} enfermedades\n`);
+const classifier = new LogisticRegressionClassifier();
+
+diagnosticos.forEach(({ enfermedad, sintomas }) => {
+  const textoNormalizado = normalizarTexto(sintomas);
+  classifier.addDocument(textoNormalizado, enfermedad);
+});
+
+classifier.train();
+console.log('✅ Logistic Regression entrenado');
+console.log(`🎯 Sistema listo: ${diagnosticos.length} patrones de enfermedades\n`);
 
 // ====================== AUTENTICACIÓN ======================
 
@@ -267,9 +448,7 @@ app.post('/api/auth/login', async (req, res) => {
   }
 });
 
-// ====================== DIAGNÓSTICO CON 2 ALGORITMOS ======================
-
-// ====================== DIAGNÓSTICO CON 2 ALGORITMOS ======================
+// ====================== DIAGNÓSTICO CON TOP 3 Y EXPLICACIÓN ======================
 
 app.post('/api/diagnostico', (req, res) => {
   const { sintomas } = req.body;
@@ -280,102 +459,95 @@ app.post('/api/diagnostico', (req, res) => {
     });
   }
 
-  const texto = sintomas.join(" ");
-  console.log('📝 Texto recibido:', texto);
+  const textoOriginal = sintomas.join(" ");
+  const textoNormalizado = normalizarTexto(textoOriginal);
 
-  // 1. NAIVE BAYES
-  const nbPredicciones = nbClassifier.getClassifications(texto);
-  const nbTop = nbPredicciones[0];
-  
-  // 2. LOGISTIC REGRESSION
-  const lrPredicciones = lrClassifier.getClassifications(texto);
-  const lrTop = lrPredicciones[0];
+  console.log('\n📝 ========== NUEVO DIAGNÓSTICO ==========');
+  console.log('Entrada:', textoOriginal);
 
-  console.log('🎯 Predicciones:');
-  console.log(`  Naive Bayes: ${nbTop.label} (${(nbTop.value * 100).toFixed(1)}%)`);
-  console.log(`  Logistic Regression: ${lrTop.label} (${(lrTop.value * 100).toFixed(1)}%)`);
+  // Obtener todas las clasificaciones
+  const predicciones = classifier.getClassifications(textoNormalizado);
 
-  // ✅ NUEVA LÓGICA: Si coinciden, promediar; si no, elegir el más confiable
-  let diagnosticoFinal;
-  let confianzaFinal;
-  let votosAlgoritmos;
+  // Top 3 enfermedades
+  const top3 = predicciones.slice(0, 3).map((p, index) => ({
+    posicion: index + 1,
+    enfermedad: p.label,
+    confianza: Math.round(p.value * 100)
+  }));
 
-  if (nbTop.label === lrTop.label) {
-    // Caso 1: Ambos algoritmos coinciden → Promediar confianzas
-    diagnosticoFinal = nbTop.label;
-    confianzaFinal = Math.round(((nbTop.value + lrTop.value) / 2) * 100);
-    votosAlgoritmos = 2;
-    console.log(`✅ Coincidencia: ${diagnosticoFinal} (promedio: ${confianzaFinal}%)`);
-  } else {
-    // Caso 2: No coinciden → Elegir el de MAYOR CONFIANZA
-    if (nbTop.value > lrTop.value) {
-      diagnosticoFinal = nbTop.label;
-      confianzaFinal = Math.round(nbTop.value * 100);
-      votosAlgoritmos = 1;
-      console.log(`⚠️ Ganador: Naive Bayes con ${confianzaFinal}%`);
-    } else {
-      diagnosticoFinal = lrTop.label;
-      confianzaFinal = Math.round(lrTop.value * 100);
-      votosAlgoritmos = 1;
-      console.log(`⚠️ Ganador: Logistic Regression con ${confianzaFinal}%`);
-    }
+  console.log('\n🏆 TOP 3 DIAGNÓSTICOS:');
+  top3.forEach(d => {
+    console.log(`  ${d.posicion}. ${d.enfermedad}: ${d.confianza}%`);
+  });
+
+  const diagnosticoPrincipal = top3[0];
+
+  // Validación de confianza mínima
+  const CONFIANZA_MINIMA = 25;
+  if (diagnosticoPrincipal.confianza < CONFIANZA_MINIMA) {
+    console.log(`\n❌ Confianza muy baja (${diagnosticoPrincipal.confianza}% < ${CONFIANZA_MINIMA}%)`);
+    return res.json({
+      diagnostico: null,
+      confianza: diagnosticoPrincipal.confianza,
+      mensaje: "⚠️ No tengo suficiente información para darte un diagnóstico confiable",
+      explicacion: "Los síntomas que mencionaste son muy generales o no coinciden claramente con ninguna enfermedad específica en mi base de conocimientos. Por favor, proporciona más detalles sobre tus síntomas.",
+      sugerencias: [
+        "Describe la intensidad de los síntomas (leve, moderado, severo)",
+        "¿Desde cuándo tienes estos síntomas?",
+        "¿Hay otros síntomas que no mencionaste?",
+        "¿El malestar es constante o intermitente?"
+      ],
+      necesita_mas_info: true,
+      top3: top3
+    });
   }
 
-  // FUNCIÓN PARA BUSCAR SÍNTOMAS
-  const buscarSintomas = (nombreEnfermedad) => {
-    const enfermedad = diagnosticos.find(d => d.enfermedad === nombreEnfermedad);
-    if (enfermedad) {
-      return enfermedad.sintomas
-        .split(' ')
-        .filter(s => s.length > 3)
-        .slice(0, 4)
-        .map(s => s.charAt(0).toUpperCase() + s.slice(1));
-    }
-    return ['Síntomas no disponibles'];
-  };
+  // Buscar explicación de la enfermedad
+  const enfermedad = diagnosticos.find(d => d.enfermedad === diagnosticoPrincipal.enfermedad);
+  const explicacion = enfermedad ? enfermedad.explicacion : "No hay explicación disponible para esta condición.";
 
-  // Alternativas
-  const alternativas = nbPredicciones
-    .slice(1, 4)
-    .map(p => ({
-      diagnostico: p.label,
-      confianza: Math.round(p.value * 100),
-      sintomas: buscarSintomas(p.label)
-    }));
+  // Extraer síntomas clave mencionados
+  const sintomasClave = textoNormalizado
+    .split(' ')
+    .filter(p => p.length > 3)
+    .slice(0, 4)
+    .map(s => s.charAt(0).toUpperCase() + s.slice(1))
+    .join(', ');
+
+  // Generar mensaje personalizado
+  const mensajeAsistente = `Basándome en los síntomas que mencionaste (${sintomasClave.toLowerCase()}), creo que podrías tener **${diagnosticoPrincipal.enfermedad}** con una confianza del ${diagnosticoPrincipal.confianza}%.\n\n${explicacion}\n\n**¿Por qué creo que es esto?**\nLos síntomas que describiste coinciden con el patrón típico de ${diagnosticoPrincipal.enfermedad}. Sin embargo, este es solo un diagnóstico preliminar basado en inteligencia artificial. Te recomiendo consultar con un médico profesional para un diagnóstico definitivo y tratamiento adecuado.`;
+
+  console.log(`\n✅ Diagnóstico: ${diagnosticoPrincipal.enfermedad} (${diagnosticoPrincipal.confianza}%)`);
+  console.log('==========================================\n');
 
   res.json({
-    diagnostico: diagnosticoFinal,
-    confianza: confianzaFinal,
-    votos: votosAlgoritmos,
-    sintomas_enfermedad: buscarSintomas(diagnosticoFinal),
-    
-    algoritmos: [
-      {
-        nombre: "Naive Bayes",
-        prediccion: nbTop.label,
-        confianza: Math.round(nbTop.value * 100)
-      },
-      {
-        nombre: "Logistic Regression",
-        prediccion: lrTop.label,
-        confianza: Math.round(lrTop.value * 100)
-      }
-    ],
-    
-    alternativas,
-    sintomas: texto
+    diagnostico: diagnosticoPrincipal.enfermedad,
+    confianza: diagnosticoPrincipal.confianza,
+    mensaje: mensajeAsistente,
+    explicacion: explicacion,
+    top3: top3,
+    sintomas_mencionados: sintomasClave,
+    recomendacion: "⚠️ Recuerda: Este es un diagnóstico asistido por IA. Consulta con un médico profesional para confirmación y tratamiento."
   });
 });
-
-
 
 // ====================== SERVIDOR ======================
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log(`🚀 AsistMedic: http://localhost:${PORT}`);
-  console.log(`📡 POST /api/auth/register`);
-  console.log(`📡 POST /api/auth/login`);
-  console.log(`📡 POST /api/diagnostico`);
-  console.log(`🤖 Algoritmos: Naive Bayes + Logistic Regression`);
+  console.log(`\n🚀 ========================================`);
+  console.log(`   AsistMedic - Sistema de Diagnóstico IA`);
+  console.log(`   http://localhost:${PORT}`);
+  console.log(`========================================`);
+  console.log(`📡 Endpoints:`);
+  console.log(`   POST /api/auth/register`);
+  console.log(`   POST /api/auth/login`);
+  console.log(`   POST /api/diagnostico`);
+  console.log(`========================================`);
+  console.log(`🤖 Algoritmo: Logistic Regression`);
+  console.log(`📊 Características:`);
+  console.log(`   • Top 3 diagnósticos posibles`);
+  console.log(`   • Explicación detallada`);
+  console.log(`   • Confianza por porcentaje`);
+  console.log(`========================================\n`);
 });
