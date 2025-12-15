@@ -3,28 +3,18 @@ import cors from 'cors';
 import natural from 'natural';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
-import pg from 'pg';
+import prisma from './prisma.js'; // ✅ Cambiado
 
-const { Pool } = pg;
 const app = express();
 app.use(cors());
 app.use(express.json());
 
 // SECRET PARA JWT
-const JWT_SECRET = 'mi-secreto-super-seguro-2024';
+const JWT_SECRET = process.env.JWT_SECRET || 'mi-secreto-super-seguro-2024';
 
-// CONEXIÓN A POSTGRESQL
-const pool = new Pool({
-  user: 'postgres',
-  host: 'localhost',
-  database: 'asistmedic',
-  password: '12345678',
-  port: 5432,
-});
-
-pool.connect()
-  .then(() => console.log('✅ Conectado a PostgreSQL'))
-  .catch(err => console.error('❌ Error conectando a PostgreSQL:', err));
+// ✅ YA NO NECESITAS ESTO:
+// const { Pool } = pg;
+// const pool = new Pool({ ... });
 
 // ====================== NORMALIZACIÓN DE TEXTO ======================
 const normalizarTexto = (texto) => {
@@ -377,29 +367,41 @@ app.post('/api/auth/register', async (req, res) => {
       return res.status(400).json({ message: 'Todos los campos son requeridos' });
     }
 
-    const existente = await pool.query('SELECT * FROM usuarios WHERE email = $1', [email]);
-    if (existente.rows.length > 0) {
+    // ✅ ANTES: pool.query('SELECT * FROM usuarios...')
+    // ✅ AHORA: Prisma
+    const existente = await prisma.usuarios.findUnique({
+      where: { email }
+    });
+
+    if (existente) {
       return res.status(400).json({ message: 'El usuario ya existe' });
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    const result = await pool.query(
-      'INSERT INTO usuarios (name, email, password) VALUES ($1, $2, $3) RETURNING id, name, email',
-      [name, email, hashedPassword]
-    );
-
-    const nuevoUsuario = result.rows[0];
+    // ✅ ANTES: pool.query('INSERT INTO usuarios...')
+    // ✅ AHORA: Prisma
+    const nuevoUsuario = await prisma.usuarios.create({
+      data: {
+        name,
+        email,
+        password: hashedPassword
+      }
+    });
 
     const token = jwt.sign(
-      { id: nuevoUsuario.id, email: nuevoUsuario.email },
+      { id: nuevoUsuario.usuario_id, email: nuevoUsuario.email },
       JWT_SECRET,
       { expiresIn: '24h' }
     );
 
     res.status(201).json({
       token,
-      user: nuevoUsuario
+      user: {
+        id: nuevoUsuario.usuario_id,
+        name: nuevoUsuario.name,
+        email: nuevoUsuario.email
+      }
     });
   } catch (error) {
     console.error('Error en registro:', error);
@@ -415,13 +417,15 @@ app.post('/api/auth/login', async (req, res) => {
       return res.status(400).json({ message: 'Email y contraseña requeridos' });
     }
 
-    const result = await pool.query('SELECT * FROM usuarios WHERE email = $1', [email]);
+    // ✅ ANTES: pool.query('SELECT * FROM usuarios...')
+    // ✅ AHORA: Prisma
+    const usuario = await prisma.usuarios.findUnique({
+      where: { email }
+    });
 
-    if (result.rows.length === 0) {
+    if (!usuario) {
       return res.status(401).json({ message: 'Credenciales inválidas' });
     }
-
-    const usuario = result.rows[0];
 
     const esValida = await bcrypt.compare(password, usuario.password);
     if (!esValida) {
@@ -429,7 +433,7 @@ app.post('/api/auth/login', async (req, res) => {
     }
 
     const token = jwt.sign(
-      { id: usuario.id, email: usuario.email },
+      { id: usuario.usuario_id, email: usuario.email },
       JWT_SECRET,
       { expiresIn: '24h' }
     );
@@ -437,7 +441,7 @@ app.post('/api/auth/login', async (req, res) => {
     res.json({
       token,
       user: {
-        id: usuario.id,
+        id: usuario.usuario_id,
         name: usuario.name,
         email: usuario.email
       }

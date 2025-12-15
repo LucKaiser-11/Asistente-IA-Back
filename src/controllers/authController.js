@@ -1,24 +1,22 @@
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-import pool from '../config/database.js';
+import prisma from '../prisma.js';
 
 // Generar token JWT
 const generarToken = (usuario) => {
   return jwt.sign(
     {
-      id: usuario.id,
+      id: usuario.usuario_id,
       email: usuario.email,
       rol: usuario.rol
     },
     process.env.JWT_SECRET,
-    { expiresIn: '24h' } // Token válido por 24 horas
+    { expiresIn: '24h' }
   );
 };
 
 // Registrar nuevo usuario
 export const registrar = async (req, res) => {
-  const client = await pool.connect();
-  
   try {
     const { nombres, apellido_paterno, apellido_materno, telefono, fecha_nacimiento, email, password } = req.body;
 
@@ -47,16 +45,12 @@ export const registrar = async (req, res) => {
       });
     }
 
-    await client.query('BEGIN');
-
     // Verificar si el email ya existe
-    const emailExiste = await client.query(
-      'SELECT id FROM usuarios WHERE email = $1',
-      [email]
-    );
+    const emailExiste = await prisma.usuarios.findUnique({
+      where: { email }
+    });
 
-    if (emailExiste.rows.length > 0) {
-      await client.query('ROLLBACK');
+    if (emailExiste) {
       return res.status(409).json({
         error: 'Email en uso',
         message: 'Este email ya está registrado'
@@ -67,61 +61,66 @@ export const registrar = async (req, res) => {
     const salt = await bcrypt.genSalt(10);
     const passwordHash = await bcrypt.hash(password, salt);
 
-    // Insertar persona
-    const personaResult = await client.query(
-      `INSERT INTO personas (nombres, apellido_paterno, apellido_materno, telefono, fecha_nacimiento)
-       VALUES ($1, $2, $3, $4, $5)
-       RETURNING id`,
-      [nombres, apellido_paterno, apellido_materno || null, telefono || null, fecha_nacimiento || null]
-    );
+    // Crear persona y usuario en una transacción
+    const resultado = await prisma.$transaction(async (tx) => {
+      // Insertar persona
+      const persona = await tx.personas.create({
+        data: {
+          nombres,
+          apellido_paterno,
+          apellido_materno: apellido_materno || null,
+          telefono: telefono || null,
+          fecha_nacimiento: fecha_nacimiento || null
+        }
+      });
 
-    const personaId = personaResult.rows[0].id;
+      // Insertar usuario
+      const usuario = await tx.usuarios.create({
+        data: {
+          persona_id: persona.persona_id,
+          email,
+          password: passwordHash,
+          rol: 'cliente',
+          activo: true
+        }
+      });
 
-    // Insertar usuario
-    const usuarioResult = await client.query(
-      `INSERT INTO usuarios (persona_id, email, password, rol, activo)
-       VALUES ($1, $2, $3, 'cliente', true)
-       RETURNING id, email, rol, activo, created_at`,
-      [personaId, email, passwordHash]
-    );
+      // Registrar en logs
+      await tx.logs_sistema.create({
+        data: {
+          usuario_id: usuario.usuario_id,
+          accion: 'REGISTRO_USUARIO',
+          tipo: 'info',
+          ip_address: req.ip
+        }
+      });
 
-    const usuario = usuarioResult.rows[0];
-
-    // Registrar en logs
-    await client.query(
-      `INSERT INTO logs_sistema (usuario_id, accion, tipo, ip_address)
-       VALUES ($1, 'REGISTRO_USUARIO', 'info', $2)`,
-      [usuario.id, req.ip]
-    );
-
-    await client.query('COMMIT');
+      return { usuario, persona };
+    });
 
     // Generar token
-    const token = generarToken(usuario);
+    const token = generarToken(resultado.usuario);
 
     res.status(201).json({
       message: 'Usuario registrado exitosamente',
       token,
       usuario: {
-        id: usuario.id,
+        id: resultado.usuario.usuario_id,
         nombres,
         apellido_paterno,
         apellido_materno,
-        email: usuario.email,
-        rol: usuario.rol,
-        creado: usuario.created_at
+        email: resultado.usuario.email,
+        rol: resultado.usuario.rol,
+        creado: resultado.usuario.created_at
       }
     });
 
   } catch (error) {
-    await client.query('ROLLBACK');
     console.error('Error en registro:', error);
     res.status(500).json({
       error: 'Error del servidor',
       message: 'No se pudo completar el registro'
     });
-  } finally {
-    client.release();
   }
 };
 
@@ -139,23 +138,19 @@ export const login = async (req, res) => {
     }
 
     // Buscar usuario con sus datos de persona
-    const result = await pool.query(
-      `SELECT u.id, u.email, u.password, u.rol, u.activo,
-              p.nombres, p.apellido_paterno, p.apellido_materno
-       FROM usuarios u
-       INNER JOIN personas p ON u.persona_id = p.id
-       WHERE u.email = $1`,
-      [email]
-    );
+    const usuario = await prisma.usuarios.findUnique({
+      where: { email },
+      include: {
+        personas: true
+      }
+    });
 
-    if (result.rows.length === 0) {
+    if (!usuario) {
       return res.status(401).json({
         error: 'Credenciales inválidas',
         message: 'Email o contraseña incorrectos'
       });
     }
-
-    const usuario = result.rows[0];
 
     // Verificar si el usuario está activo
     if (!usuario.activo) {
@@ -170,11 +165,14 @@ export const login = async (req, res) => {
 
     if (!passwordValido) {
       // Registrar intento fallido
-      await pool.query(
-        `INSERT INTO logs_sistema (usuario_id, accion, tipo, ip_address)
-         VALUES ($1, 'LOGIN_FALLIDO', 'warning', $2)`,
-        [usuario.id, req.ip]
-      );
+      await prisma.logs_sistema.create({
+        data: {
+          usuario_id: usuario.usuario_id,
+          accion: 'LOGIN_FALLIDO',
+          tipo: 'warning',
+          ip_address: req.ip
+        }
+      });
 
       return res.status(401).json({
         error: 'Credenciales inválidas',
@@ -183,11 +181,14 @@ export const login = async (req, res) => {
     }
 
     // Registrar login exitoso
-    await pool.query(
-      `INSERT INTO logs_sistema (usuario_id, accion, tipo, ip_address)
-       VALUES ($1, 'LOGIN_EXITOSO', 'info', $2)`,
-      [usuario.id, req.ip]
-    );
+    await prisma.logs_sistema.create({
+      data: {
+        usuario_id: usuario.usuario_id,
+        accion: 'LOGIN_EXITOSO',
+        tipo: 'info',
+        ip_address: req.ip
+      }
+    });
 
     // Generar token
     const token = generarToken(usuario);
@@ -196,10 +197,10 @@ export const login = async (req, res) => {
       message: 'Login exitoso',
       token,
       usuario: {
-        id: usuario.id,
-        nombres: usuario.nombres,
-        apellido_paterno: usuario.apellido_paterno,
-        apellido_materno: usuario.apellido_materno,
+        id: usuario.usuario_id,
+        nombres: usuario.personas.nombres,
+        apellido_paterno: usuario.personas.apellido_paterno,
+        apellido_materno: usuario.personas.apellido_materno,
         email: usuario.email,
         rol: usuario.rol
       }
@@ -217,24 +218,32 @@ export const login = async (req, res) => {
 // Obtener perfil del usuario actual
 export const obtenerPerfil = async (req, res) => {
   try {
-    const result = await pool.query(
-      `SELECT u.id, u.email, u.rol, u.activo, u.created_at,
-              p.nombres, p.apellido_paterno, p.apellido_materno, 
-              p.telefono, p.fecha_nacimiento
-       FROM usuarios u
-       INNER JOIN personas p ON u.persona_id = p.id
-       WHERE u.id = $1`,
-      [req.usuario.id]
-    );
+    const usuario = await prisma.usuarios.findUnique({
+      where: { usuario_id: req.usuario.id },
+      include: {
+        personas: true
+      }
+    });
 
-    if (result.rows.length === 0) {
+    if (!usuario) {
       return res.status(404).json({
         error: 'Usuario no encontrado'
       });
     }
 
     res.json({
-      usuario: result.rows[0]
+      usuario: {
+        id: usuario.usuario_id,
+        email: usuario.email,
+        rol: usuario.rol,
+        activo: usuario.activo,
+        created_at: usuario.created_at,
+        nombres: usuario.personas.nombres,
+        apellido_paterno: usuario.personas.apellido_paterno,
+        apellido_materno: usuario.personas.apellido_materno,
+        telefono: usuario.personas.telefono,
+        fecha_nacimiento: usuario.personas.fecha_nacimiento
+      }
     });
 
   } catch (error) {
