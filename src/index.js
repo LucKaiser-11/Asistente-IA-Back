@@ -3,20 +3,17 @@ import cors from 'cors';
 import natural from 'natural';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
-import prisma from './prisma.js'; // ✅ Cambiado
+import prisma from './prisma.js';
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
-// SECRET PARA JWT
 const JWT_SECRET = process.env.JWT_SECRET || 'mi-secreto-super-seguro-2024';
 
-// ✅ YA NO NECESITAS ESTO:
-// const { Pool } = pg;
-// const pool = new Pool({ ... });
-
-// ====================== NORMALIZACIÓN DE TEXTO ======================
+// ========================================
+// NORMALIZAR TEXTO
+// ========================================
 const normalizarTexto = (texto) => {
   return texto
     .toLowerCase()
@@ -27,7 +24,9 @@ const normalizarTexto = (texto) => {
     .trim();
 };
 
-// ====================== DATASET COMPLETO ======================
+// ========================================
+// BASE DE DATOS DE DIAGNÓSTICOS
+// ========================================
 const diagnosticos = [
   // MIGRAÑA
   { enfermedad: "Migraña", sintomas: "dolor cabeza intenso pulsante late martillazo lado cabeza empeora luz sonido nauseas vomitos dura horas dias" },
@@ -343,22 +342,261 @@ const diagnosticos = [
   { enfermedad: "Tendinitis", sintomas: "dolor tendinoso movimiento inflamacion rigidez" },
 ];
 
-// ====================== ENTRENAR ALGORITMO ======================
+// Agregar DESPUÉS del array de diagnosticos en tu index.js del backend
+
+const explicacionesEnfermedades = {
+  "Migraña": "La migraña es un tipo de dolor de cabeza intenso y pulsante que generalmente afecta un lado de la cabeza. Se acompaña de náuseas, vómitos y sensibilidad extrema a la luz (fotofobia) y sonidos (fonofobia). Los episodios pueden durar de 4 a 72 horas y pueden estar precedidos por síntomas visuales conocidos como 'aura'.",
+  
+  "Cefalea tensional": "La cefalea tensional es el tipo más común de dolor de cabeza. Se caracteriza por una sensación de presión o tensión bilateral (en ambos lados de la cabeza), como si llevara una banda apretada alrededor de la cabeza. Suele estar relacionada con el estrés, la tensión muscular en cuello y hombros, y mejora con el descanso.",
+  
+  "Sinusitis aguda": "La sinusitis aguda es la inflamación e infección de los senos paranasales, generalmente causada por virus o bacterias. Produce dolor y presión facial intensa en la frente, mejillas y alrededor de los ojos, congestión nasal con secreción espesa amarillenta o verdosa, y el dolor aumenta al inclinar la cabeza hacia adelante.",
+  
+  "Gripe": "La gripe (influenza) es una infección viral respiratoria altamente contagiosa. Los síntomas aparecen súbitamente e incluyen fiebre alta (38-40°C), escalofríos intensos, dolores musculares y articulares severos (mialgias), fatiga extrema, tos seca y dolor de garganta. Es más grave que un resfriado común y puede durar de 1 a 2 semanas.",
+  
+  "Resfriado común": "El resfriado común es una infección viral leve de las vías respiratorias superiores causada por rinovirus. Los síntomas se desarrollan gradualmente e incluyen congestión nasal, estornudos frecuentes, tos leve, dolor de garganta leve y generalmente no causa fiebre alta. Es autolimitado y dura típicamente de 7 a 10 días.",
+  
+  "COVID-19": "COVID-19 es una enfermedad respiratoria causada por el coronavirus SARS-CoV-2. Los síntomas característicos incluyen fiebre, tos seca persistente, pérdida total del olfato (anosmia) y gusto (ageusia), dificultad para respirar, fatiga y dolor de garganta. Puede variar desde casos leves hasta neumonía grave que requiere hospitalización.",
+  
+  "Gastroenteritis": "La gastroenteritis es la inflamación del tracto gastrointestinal causada por virus, bacterias o parásitos. Se caracteriza por diarrea líquida frecuente, náuseas, vómitos, dolor abdominal tipo cólico, fiebre leve y puede causar deshidratación si no se reponen adecuadamente los líquidos perdidos. Es altamente contagiosa.",
+  
+  "Faringitis": "La faringitis es la inflamación de la faringe (garganta) que causa dolor intenso al tragar (odinofagia). Puede ser viral o bacteriana (como la faringitis estreptocócica). Se caracteriza por garganta roja e inflamada, amígdalas aumentadas de tamaño, fiebre y ganglios linfáticos cervicales inflamados.",
+  
+  "Bronquitis": "La bronquitis es la inflamación de los bronquios (conductos que llevan aire a los pulmones). Se caracteriza por tos persistente y productiva con expectoración de flema amarilla o verdosa, dificultad para respirar, sibilancias (silbidos en el pecho) y dolor torácico al toser. Puede ser aguda (por infección) o crónica (por tabaquismo).",
+  
+  "Neumonía": "La neumonía es una infección pulmonar grave que inflama los alvéolos y los llena de líquido o pus. Causa fiebre muy alta (39°C o más), tos productiva con flema amarilla, verdosa o herrumbrosa, dolor torácico intenso al respirar (dolor pleurítico), dificultad respiratoria severa y escalofríos intensos. Requiere tratamiento médico urgente.",
+  
+  "Asma": "El asma es una enfermedad crónica que inflama y estrecha las vías respiratorias. Causa episodios recurrentes de dificultad para respirar, sibilancias (silbidos en el pecho), opresión torácica y tos seca, especialmente por la noche o al despertar. Los síntomas pueden desencadenarse por alérgenos, ejercicio o cambios climáticos.",
+  
+  "Infarto miocardio": "El infarto de miocardio (ataque cardíaco) ocurre cuando se bloquea el flujo sanguíneo al corazón. Causa dolor torácico intenso y opresivo (como un elefante sobre el pecho) que se irradia al brazo izquierdo, mandíbula, cuello o espalda, sudoración fría profusa, náuseas, dificultad para respirar y sensación de muerte inminente. ES UNA EMERGENCIA MÉDICA - LLAMAR AL 911 INMEDIATAMENTE.",
+  
+  "Angina pecho": "La angina de pecho es dolor o molestia torácica causada por flujo sanguíneo insuficiente al corazón. Se presenta como presión u opresión en el pecho durante esfuerzo físico o estrés emocional, puede irradiar al brazo izquierdo, y mejora con reposo o nitroglicerina. Es una señal de advertencia de enfermedad cardíaca.",
+  
+  "Ansiedad": "El trastorno de ansiedad causa preocupación excesiva y persistente difícil de controlar. Los síntomas físicos incluyen palpitaciones, sudoración profusa, temblores, sensación de falta de aire, opresión en el pecho, mareos, miedo intenso o pánico sin causa aparente. Puede interferir significativamente con las actividades diarias.",
+  
+  "Depresión": "La depresión es un trastorno del estado de ánimo caracterizado por tristeza profunda y persistente durante semanas o meses, pérdida de interés en actividades que antes disfrutaba (anhedonia), fatiga extrema, alteraciones del sueño (insomnio o hipersomnia), pérdida de apetito, sentimientos de inutilidad y en casos graves, pensamientos de muerte o suicidio.",
+  
+  "Diabetes tipo 2": "La diabetes tipo 2 es una enfermedad crónica donde el cuerpo no procesa correctamente la glucosa (azúcar en sangre). Causa sed excesiva, necesidad de orinar frecuentemente, visión borrosa, fatiga, heridas que tardan en cicatrizar e infecciones frecuentes. Si no se controla puede causar complicaciones graves en riñones, ojos, nervios y corazón.",
+  
+  "Hipertensión": "La hipertensión (presión arterial alta) generalmente no causa síntomas, por eso se le llama 'el asesino silencioso'. Cuando los hay, incluyen dolor de cabeza en la nuca, mareos, zumbido en los oídos, visión borrosa y palpitaciones. Aumenta el riesgo de infarto, derrame cerebral y daño renal.",
+  
+  "Hipotensión": "La hipotensión (presión arterial baja) causa mareos frecuentes, sensación de debilidad, fatiga, visión borrosa y en casos severos, desmayos (síncope). Ocurre cuando la presión arterial cae por debajo de 90/60 mmHg y el cerebro no recibe suficiente flujo sanguíneo.",
+  
+  "Artritis reumatoide": "La artritis reumatoide es una enfermedad autoinmune crónica que causa inflamación simétrica de las articulaciones (afecta ambos lados del cuerpo por igual). Se caracteriza por dolor articular, rigidez matinal prolongada (más de 1 hora), hinchazón, calor y enrojecimiento de las articulaciones, especialmente en manos, muñecas y rodillas. Con el tiempo puede causar deformidades.",
+  
+  "Artrosis": "La artrosis es el desgaste del cartílago articular relacionado con la edad. Causa dolor mecánico (empeora con el movimiento y mejora con el reposo) en rodillas, caderas, manos y columna, rigidez matinal breve (menos de 30 minutos) y crepitación (crujidos) al mover las articulaciones. Es la forma más común de artritis.",
+  
+  "Gota": "La gota es causada por acumulación de cristales de ácido úrico en las articulaciones. Se caracteriza por dolor articular súbito, extremadamente intenso e insoportable, generalmente en el dedo gordo del pie (podagra), que aparece típicamente por la noche. La articulación afectada está muy roja, hinchada, caliente y tan sensible que no se puede tocar ni apoyar.",
+  
+  "Cistitis": "La cistitis es una infección de la vejiga urinaria, más común en mujeres. Causa ardor intenso al orinar (disuria), necesidad urgente de orinar frecuentemente (urgencia y polaquiuria), dolor en el bajo vientre, orina turbia con mal olor y a veces sangre en la orina (hematuria).",
+  
+  "Pielonefritis": "La pielonefritis es una infección del riñón, más grave que la cistitis. Causa fiebre alta (38°C o más), escalofríos intensos, dolor en el costado o espalda baja (lumbar) de un solo lado, ardor al orinar, náuseas y vómitos. Requiere tratamiento antibiótico urgente para prevenir daño renal permanente.",
+  
+  "Pancreatitis aguda": "La pancreatitis aguda es la inflamación súbita del páncreas. Causa dolor abdominal superior muy intenso y penetrante que se irradia hacia la espalda en forma de cinturón, náuseas, vómitos abundantes, fiebre y distensión abdominal. El dolor empeora al acostarse y mejora al sentarse inclinado hacia adelante. Es una emergencia médica.",
+  
+  "Apendicitis": "La apendicitis es la inflamación del apéndice. Típicamente comienza con dolor periumbilical (alrededor del ombligo) que luego migra a la fosa ilíaca derecha (parte baja derecha del abdomen). Se acompaña de náuseas, vómitos, fiebre, pérdida de apetito y el dolor aumenta con el movimiento o la tos. Requiere cirugía urgente.",
+  
+  "Dermatitis atópica": "La dermatitis atópica (eccema) es una enfermedad inflamatoria crónica de la piel. Causa picazón intensa e insoportable, enrojecimiento, erupciones, resequedad severa y descamación de la piel. Es más común en personas con antecedentes de alergias o asma y tiende a aparecer en brotes.",
+  
+  "Psoriasis": "La psoriasis es una enfermedad autoinmune crónica de la piel. Se caracteriza por placas rojas bien definidas cubiertas de escamas blancas o plateadas gruesas. Aparece comúnmente en codos, rodillas, cuero cabelludo y espalda baja. No es contagiosa y puede mejorar y empeorar en brotes.",
+  
+  "Acné": "El acné es una enfermedad de la piel causada por obstrucción de los poros. Se caracteriza por espinillas, puntos negros (comedones), granos rojos (pápulas), lesiones con pus (pústulas) y enrojecimiento, principalmente en cara, pecho y espalda. Es más común en adolescentes debido a cambios hormonales.",
+  
+  "Alergia estacional": "La alergia estacional (rinitis alérgica o fiebre del heno) es causada por alérgenos como polen. Causa estornudos frecuentes, congestión nasal, moqueo acuoso, picazón en ojos, nariz y garganta, y lagrimeo. Los síntomas empeoran en primavera y otoño cuando hay más polen en el aire.",
+  
+  "Urticaria": "La urticaria es una reacción alérgica de la piel. Se caracteriza por ronchas o habones rojos elevados que causan picazón intensa. Las lesiones pueden aparecer y desaparecer rápidamente, cambiar de forma y ubicación. Puede ser causada por alimentos, medicamentos, picaduras de insectos o estrés.",
+  
+  "Conjuntivitis": "La conjuntivitis es la inflamación de la conjuntiva (membrana que cubre el ojo). Causa enrojecimiento ocular (ojo rojo), picazón, lagrimeo, secreción (legañas) que puede ser acuosa (viral) o purulenta (bacteriana), y párpados pegados especialmente al despertar. Es muy contagiosa cuando es viral o bacteriana.",
+  
+  "Miopía": "La miopía es un defecto refractivo del ojo donde los objetos lejanos se ven borrosos mientras que los cercanos se ven claramente. Las personas miopes tienden a entrecerrar los ojos para intentar enfocar objetos distantes. Se corrige con lentes (anteojos o lentes de contacto) o cirugía refractiva.",
+  
+  "Otitis media": "La otitis media es una infección del oído medio, más común en niños. Causa dolor de oído intenso (otalgia), sensación de presión en el oído, fiebre, dificultad para escuchar (hipoacusia temporal) y a veces secreción purulenta si se perfora el tímpano. Requiere tratamiento antibiótico.",
+  
+  "Vértigo posicional": "El vértigo posicional paroxístico benigno (VPPB) es causado por cristales de calcio desplazados en el oído interno. Causa episodios breves e intensos de vértigo (sensación de que todo gira) desencadenados por cambios de posición de la cabeza, como al acostarse, levantarse o girar en la cama.",
+  
+  "Insomnio": "El insomnio es la dificultad persistente para conciliar el sueño, mantenerlo o lograr un sueño reparador. Causa despertares frecuentes durante la noche, despertar muy temprano sin poder volver a dormir, cansancio diurno, fatiga, irritabilidad, dificultad para concentrarse y afecta el rendimiento laboral o académico.",
+  
+  "Herpes zóster": "El herpes zóster (culebrilla) es causado por la reactivación del virus de la varicela. Se caracteriza por vesículas (ampollas) dolorosas que aparecen en forma de banda o cinturón en un solo lado del cuerpo (unilateral), siguiendo un dermatoma. Causa dolor neuropático intenso tipo ardor o quemadura que puede aparecer días antes de las lesiones.",
+  
+  "Varicela": "La varicela es una infección viral altamente contagiosa causada por el virus varicela-zóster. Se caracteriza por erupción generalizada con vesículas (ampollas) que pican intensamente, fiebre y malestar general. Las lesiones aparecen en diferentes etapas: manchas rojas, ampollas y costras. Es más común en niños.",
+  
+  "Hepatitis A": "La hepatitis A es una infección viral del hígado transmitida por vía fecal-oral. Causa ictericia (coloración amarilla de piel y ojos), fatiga intensa, dolor en el cuadrante superior derecho del abdomen, náuseas, vómitos, orina oscura (coluria) y heces claras (acolia). Generalmente se recupera completamente en semanas o meses.",
+  
+  "Cirrosis hepática": "La cirrosis hepática es la cicatrización y daño irreversible del hígado, causada por alcoholismo crónico, hepatitis viral o enfermedad del hígado graso. Causa acumulación de líquido en el abdomen (ascitis), ictericia, confusión mental (encefalopatía), hinchazón de piernas, fatiga y sangrado fácil. Es una condición grave y potencialmente mortal.",
+  
+  "Reflujo gastroesofágico": "El reflujo gastroesofágico (ERGE) ocurre cuando el ácido del estómago sube al esófago. Causa ardor en el pecho detrás del esternón (pirosis), sabor ácido o amargo en la boca, regurgitación ácida y dolor epigástrico. Los síntomas empeoran al acostarse, después de comer o al agacharse.",
+  
+  "Úlcera péptica": "La úlcera péptica es una llaga en el revestimiento del estómago o duodeno, generalmente causada por Helicobacter pylori o AINEs. Causa dolor epigástrico tipo ardor, hambre dolorosa que mejora al comer pero empeora 2-3 horas después, náuseas y en casos graves, heces negras (melena) por sangrado.",
+  
+  "Enfermedad celíaca": "La enfermedad celíaca es una enfermedad autoinmune causada por intolerancia al gluten (proteína del trigo, cebada y centeno). Causa diarrea crónica, pérdida de peso, dolor abdominal, hinchazón, fatiga y malabsorción de nutrientes. El único tratamiento es seguir una dieta estricta sin gluten de por vida.",
+  
+  "Síndrome intestino irritable": "El síndrome de intestino irritable (SII) es un trastorno funcional del intestino. Causa dolor abdominal recurrente, alternancia entre diarrea y estreñimiento, distensión abdominal, gases excesivos y los síntomas mejoran después de defecar. Es una condición crónica que afecta la calidad de vida pero no causa daño intestinal permanente.",
+  
+  "Cálculos renales": "Los cálculos renales son piedras que se forman en los riñones. Causan cólico renal, un dolor extremadamente intenso e insoportable en el costado o espalda baja que viene en ondas, náuseas, vómitos y sangre en la orina (hematuria). El dolor es tan severo que a menudo se describe como uno de los peores dolores imaginables.",
+  
+  "Insuficiencia renal crónica": "La insuficiencia renal crónica es la pérdida gradual e irreversible de la función renal. Causa fatiga extrema, hinchazón de tobillos y pies (edema), palidez por anemia, orina espumosa (por proteínas), náuseas, pérdida de apetito, picazón generalizada y en etapas avanzadas puede requerir diálisis o trasplante.",
+  
+  "Osteoporosis": "La osteoporosis es la disminución de la densidad ósea que hace los huesos frágiles y propensos a fracturas. Generalmente no causa síntomas hasta que ocurre una fractura (típicamente en cadera, columna o muñeca), pérdida de altura progresiva, postura encorvada y dolor de espalda crónico. Es más común en mujeres postmenopáusicas.",
+  
+  "Fibromialgia": "La fibromialgia es un trastorno crónico caracterizado por dolor musculoesquelético generalizado en todo el cuerpo, múltiples puntos sensibles dolorosos a la palpación, fatiga crónica persistente, rigidez matinal, sueño no reparador, problemas de concentración ('fibro niebla') y sensibilidad aumentada al dolor.",
+  
+  "Lupus": "El lupus eritematoso sistémico es una enfermedad autoinmune crónica que puede afectar múltiples órganos. Se caracteriza por erupción facial en forma de mariposa en mejillas y nariz (eritema malar), dolor articular, fiebre, fatiga extrema, fotosensibilidad (sensibilidad al sol) y puede causar daño a riñones, corazón y pulmones.",
+  
+  "Epilepsia": "La epilepsia es un trastorno neurológico caracterizado por crisis convulsivas recurrentes causadas por actividad eléctrica anormal en el cerebro. Las convulsiones pueden causar pérdida de consciencia, caídas, movimientos involuntarios rítmicos, contracciones musculares, confusión temporal y en algunos casos incontinencia. Requiere tratamiento con anticonvulsivos.",
+  
+  "Parkinson": "La enfermedad de Parkinson es un trastorno neurodegenerativo progresivo. Se caracteriza por temblor en reposo (especialmente en manos), rigidez muscular, lentitud de movimientos (bradicinesia), dificultad para caminar arrastrando los pies, postura encorvada, pérdida de expresión facial y alteraciones del equilibrio. Los síntomas empeoran gradualmente con el tiempo.",
+  
+  "Alzheimer": "La enfermedad de Alzheimer es la forma más común de demencia, caracterizada por deterioro cognitivo progresivo. Causa pérdida de memoria reciente, olvidos frecuentes, confusión sobre tiempo y lugar, desorientación, dificultad para reconocer personas familiares, cambios de personalidad y pérdida progresiva de la capacidad para realizar actividades diarias.",
+  
+  "Accidente cerebrovascular": "El accidente cerebrovascular (ACV o derrame cerebral) ocurre cuando se interrumpe el flujo sanguíneo al cerebro. Causa debilidad súbita de cara, brazo o pierna en un solo lado del cuerpo, asimetría facial, dificultad para hablar (lenguaje arrastrado), confusión, mareos severos, pérdida de equilibrio y dolor de cabeza intenso. ES UNA EMERGENCIA MÉDICA - LLAMAR AL 911 INMEDIATAMENTE.",
+  
+  "Tuberculosis pulmonar": "La tuberculosis pulmonar es una infección bacteriana contagiosa causada por Mycobacterium tuberculosis. Causa tos persistente por más de 3 semanas, expectoración con sangre (hemoptisis), pérdida de peso progresiva, sudores nocturnos profusos que empapan las sábanas, fiebre vespertina y fatiga extrema. Requiere tratamiento antibiótico prolongado (6 meses).",
+  
+  "Malaria": "La malaria (paludismo) es una enfermedad parasitaria transmitida por mosquitos Anopheles. Se caracteriza por fiebre intermitente cíclica (cada 48-72 horas según el tipo de parásito), escalofríos intensos con temblores incontrolables, sudoración profusa, dolor de cabeza, náuseas y vómitos. Es potencialmente mortal si no se trata.",
+  
+  "Dengue": "El dengue es una enfermedad viral transmitida por mosquitos Aedes. Causa fiebre muy alta de inicio súbito (40°C), dolor muscular y articular tan intenso que se llama 'fiebre quebrantahuesos', dolor detrás de los ojos (retrorbitario), erupción cutánea, sangrado leve de encías o nariz. En casos graves puede causar dengue hemorrágico potencialmente mortal.",
+  
+  "VIH/SIDA": "El VIH (Virus de Inmunodeficiencia Humana) destruye progresivamente el sistema inmunológico. Causa ganglios inflamados persistentes, fiebre prolongada por más de un mes, sudores nocturnos, pérdida de peso involuntaria, fatiga extrema e infecciones oportunistas frecuentes. Sin tratamiento progresa a SIDA donde el sistema inmune está severamente debilitado.",
+  
+  "Mononucleosis": "La mononucleosis infecciosa ('enfermedad del beso') es causada por el virus de Epstein-Barr. Causa fiebre persistente prolongada, faringitis con dolor de garganta muy intenso, inflamación masiva de ganglios del cuello (linfadenopatia cervical), fatiga extrema que puede durar semanas o meses, y aumento del tamaño del bazo (esplenomegalia).",
+  
+  "Gonorrea": "La gonorrea es una infección de transmisión sexual causada por bacteria Neisseria gonorrhoeae. En hombres causa secreción purulenta amarilla o verdosa del pene, ardor intenso al orinar y dolor testicular. En mujeres causa flujo vaginal anormal, sangrado entre períodos y dolor al orinar. Si no se trata puede causar infertilidad.",
+  
+  "Sífilis": "La sífilis es una infección de transmisión sexual bacteriana que evoluciona en etapas. La etapa primaria causa una úlcera indolora (chancro) en genitales. La etapa secundaria causa erupción cutánea en palmas de manos y plantas de pies, fiebre y ganglios inflamados. Sin tratamiento puede causar daño grave a corazón, cerebro y otros órganos.",
+  
+  "Fascitis plantar": "La fascitis plantar es la inflamación de la fascia plantar (tejido grueso en la planta del pie). Causa dolor intenso y punzante en el talón especialmente con los primeros pasos al despertar en la mañana, que mejora después de caminar un poco pero empeora al final del día. Es más común en corredores y personas con sobrepeso.",
+  
+  "Esguince tobillo": "El esguince de tobillo es el estiramiento o desgarro de los ligamentos del tobillo por torcedura. Causa dolor agudo inmediato, hinchazón rápida, moretón (equimosis), dificultad para caminar o apoyar el pie. Según la gravedad puede ser leve (grado 1), moderado (grado 2) o severo con ruptura completa del ligamento (grado 3).",
+  
+  "Tendinitis": "La tendinitis es la inflamación de un tendón causada por uso repetitivo o sobrecarga. Causa dolor localizado en el tendón afectado que empeora con movimientos específicos, inflamación, rigidez y debilidad en la articulación. Es común en muñeca, codo (codo de tenista), hombro (manguito rotador), tobillo (tendón de Aquiles) y rodilla."
+};
+
+// ========================================
+// ENTRENAR MODELO IA
+// ========================================
 const { LogisticRegressionClassifier } = natural;
-
 const classifier = new LogisticRegressionClassifier();
-
 diagnosticos.forEach(({ enfermedad, sintomas }) => {
   const textoNormalizado = normalizarTexto(sintomas);
   classifier.addDocument(textoNormalizado, enfermedad);
 });
-
 classifier.train();
 console.log('✅ Logistic Regression entrenado');
 console.log(`🎯 Sistema listo: ${diagnosticos.length} patrones de enfermedades\n`);
 
-// ====================== AUTENTICACIÓN ======================
+// ========================================
+// MIDDLEWARE DE AUTENTICACIÓN
+// ========================================
+const verificarToken = (req, res, next) => {
+  try {
+    const authHeader = req.headers.authorization;
 
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({
+        success: false,
+        message: 'No se proporcionó token de autenticación'
+      });
+    }
+
+    const token = authHeader.split(' ')[1];
+    const decoded = jwt.verify(token, JWT_SECRET);
+    
+    req.user = decoded; // { id, email }
+    next();
+  } catch (error) {
+    return res.status(401).json({
+      success: false,
+      message: 'Token inválido o expirado'
+    });
+  }
+};
+
+// ========================================
+// FUNCIÓN AUXILIAR - CALCULAR GRAVEDAD
+// ========================================
+// ========================================
+// CLASIFICACIÓN DE GRAVEDAD POR ENFERMEDAD
+// ========================================
+const gravedadEnfermedades = {
+  // GRAVEDAD BAJA (10 enfermedades)
+  "Resfriado común": "baja",
+  "Alergia estacional": "baja",
+  "Conjuntivitis": "baja",
+  "Dermatitis atópica": "baja",
+  "Acné": "baja",
+  "Insomnio": "baja",
+  "Fascitis plantar": "baja",
+  "Tendinitis": "baja",
+  "Esguince tobillo": "baja",
+  "Urticaria": "baja",
+  "Miopía": "baja",
+  
+  // GRAVEDAD MODERADA (22 enfermedades)
+  "Migraña": "moderada",
+  "Cefalea tensional": "moderada",
+  "Gripe": "moderada",
+  "Sinusitis aguda": "moderada",
+  "Gastroenteritis": "moderada",
+  "Faringitis": "moderada",
+  "Bronquitis": "moderada",
+  "Cistitis": "moderada",
+  "Reflujo gastroesofágico": "moderada",
+  "Artrosis": "moderada",
+  "Psoriasis": "moderada",
+  "Otitis media": "moderada",
+  "Vértigo posicional": "moderada",
+  "Mononucleosis": "moderada",
+  "Varicela": "moderada",
+  "Herpes zóster": "moderada",
+  "Artritis reumatoide": "moderada",
+  "Fibromialgia": "moderada",
+  "Ansiedad": "moderada",
+  "Depresión": "moderada",
+  "Úlcera péptica": "moderada",
+  "Síndrome intestino irritable": "moderada",
+  
+  // GRAVEDAD ALTA (31 enfermedades)
+  "COVID-19": "alta",
+  "Neumonía": "alta",
+  "Asma": "alta",
+  "Infarto miocardio": "alta",
+  "Angina pecho": "alta",
+  "Accidente cerebrovascular": "alta",
+  "Diabetes tipo 2": "alta",
+  "Hipertensión": "alta",
+  "Hipotensión": "alta",
+  "Pielonefritis": "alta",
+  "Pancreatitis aguda": "alta",
+  "Apendicitis": "alta",
+  "Gota": "alta",
+  "Enfermedad celíaca": "alta",
+  "Cálculos renales": "alta",
+  "Insuficiencia renal crónica": "alta",
+  "Hepatitis A": "alta",
+  "Cirrosis hepática": "alta",
+  "Tuberculosis pulmonar": "alta",
+  "Malaria": "alta",
+  "Dengue": "alta",
+  "VIH/SIDA": "alta",
+  "Gonorrea": "alta",
+  "Sífilis": "alta",
+  "Osteoporosis": "alta",
+  "Lupus": "alta",
+  "Epilepsia": "alta",
+  "Parkinson": "alta",
+  "Alzheimer": "alta"
+};
+
+// NUEVA FUNCIÓN calcularGravedad
+const calcularGravedad = (enfermedad) => {
+  return gravedadEnfermedades[enfermedad] || "moderada";
+};
+
+
+// ========================================
+// RUTAS DE AUTENTICACIÓN
+// ========================================
+
+// POST /api/auth/register
 app.post('/api/auth/register', async (req, res) => {
   try {
     const { name, email, password } = req.body;
@@ -367,8 +605,6 @@ app.post('/api/auth/register', async (req, res) => {
       return res.status(400).json({ message: 'Todos los campos son requeridos' });
     }
 
-    // ✅ ANTES: pool.query('SELECT * FROM usuarios...')
-    // ✅ AHORA: Prisma
     const existente = await prisma.usuarios.findUnique({
       where: { email }
     });
@@ -378,9 +614,6 @@ app.post('/api/auth/register', async (req, res) => {
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
-
-    // ✅ ANTES: pool.query('INSERT INTO usuarios...')
-    // ✅ AHORA: Prisma
     const nuevoUsuario = await prisma.usuarios.create({
       data: {
         name,
@@ -409,6 +642,7 @@ app.post('/api/auth/register', async (req, res) => {
   }
 });
 
+// POST /api/auth/login
 app.post('/api/auth/login', async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -417,10 +651,9 @@ app.post('/api/auth/login', async (req, res) => {
       return res.status(400).json({ message: 'Email y contraseña requeridos' });
     }
 
-    // ✅ ANTES: pool.query('SELECT * FROM usuarios...')
-    // ✅ AHORA: Prisma
     const usuario = await prisma.usuarios.findUnique({
-      where: { email }
+      where: { email },
+      include: { personas: true }
     });
 
     if (!usuario) {
@@ -433,7 +666,7 @@ app.post('/api/auth/login', async (req, res) => {
     }
 
     const token = jwt.sign(
-      { id: usuario.usuario_id, email: usuario.email },
+      { id: usuario.id, email: usuario.email },
       JWT_SECRET,
       { expiresIn: '24h' }
     );
@@ -441,9 +674,10 @@ app.post('/api/auth/login', async (req, res) => {
     res.json({
       token,
       user: {
-        id: usuario.usuario_id,
-        name: usuario.name,
-        email: usuario.email
+        id: usuario.id,
+        email: usuario.email,
+        nombres: usuario.personas?.nombres || 'Usuario',
+        apellido_paterno: usuario.personas?.apellido_paterno || ''
       }
     });
   } catch (error) {
@@ -452,8 +686,11 @@ app.post('/api/auth/login', async (req, res) => {
   }
 });
 
-// ====================== DIAGNÓSTICO CON TOP 3 Y EXPLICACIÓN ======================
+// ========================================
+// RUTA DE DIAGNÓSTICO CON IA
+// ========================================
 
+// POST /api/diagnostico - Obtener diagnóstico de IA
 app.post('/api/diagnostico', (req, res) => {
   const { sintomas } = req.body;
 
@@ -468,11 +705,8 @@ app.post('/api/diagnostico', (req, res) => {
 
   console.log('\n📝 ========== NUEVO DIAGNÓSTICO ==========');
   console.log('Entrada:', textoOriginal);
-
-  // Obtener todas las clasificaciones
+  
   const predicciones = classifier.getClassifications(textoNormalizado);
-
-  // Top 3 enfermedades
   const top3 = predicciones.slice(0, 3).map((p, index) => ({
     posicion: index + 1,
     enfermedad: p.label,
@@ -486,7 +720,6 @@ app.post('/api/diagnostico', (req, res) => {
 
   const diagnosticoPrincipal = top3[0];
 
-  // Validación de confianza mínima
   const CONFIANZA_MINIMA = 25;
   if (diagnosticoPrincipal.confianza < CONFIANZA_MINIMA) {
     console.log(`\n❌ Confianza muy baja (${diagnosticoPrincipal.confianza}% < ${CONFIANZA_MINIMA}%)`);
@@ -506,11 +739,11 @@ app.post('/api/diagnostico', (req, res) => {
     });
   }
 
-  // Buscar explicación de la enfermedad
-  const enfermedad = diagnosticos.find(d => d.enfermedad === diagnosticoPrincipal.enfermedad);
-  const explicacion = enfermedad ? enfermedad.explicacion : "No hay explicación disponible para esta condición.";
+  // ✅ DESPUÉS:
+  const explicacion = explicacionesEnfermedades[diagnosticoPrincipal.enfermedad] || 
+  `${diagnosticoPrincipal.enfermedad} es una condición médica que presenta los síntomas que has descrito. Los síntomas que mencionaste coinciden con el patrón típico de esta enfermedad. Sin embargo, este es solo un diagnóstico preliminar basado en inteligencia artificial. Te recomendamos consultar con un médico profesional para un diagnóstico definitivo y tratamiento adecuado.`;
 
-  // Extraer síntomas clave mencionados
+
   const sintomasClave = textoNormalizado
     .split(' ')
     .filter(p => p.length > 3)
@@ -518,7 +751,6 @@ app.post('/api/diagnostico', (req, res) => {
     .map(s => s.charAt(0).toUpperCase() + s.slice(1))
     .join(', ');
 
-  // Generar mensaje personalizado
   const mensajeAsistente = `Basándome en los síntomas que mencionaste (${sintomasClave.toLowerCase()}), creo que podrías tener **${diagnosticoPrincipal.enfermedad}** con una confianza del ${diagnosticoPrincipal.confianza}%.\n\n${explicacion}\n\n**¿Por qué creo que es esto?**\nLos síntomas que describiste coinciden con el patrón típico de ${diagnosticoPrincipal.enfermedad}. Sin embargo, este es solo un diagnóstico preliminar basado en inteligencia artificial. Te recomiendo consultar con un médico profesional para un diagnóstico definitivo y tratamiento adecuado.`;
 
   console.log(`\n✅ Diagnóstico: ${diagnosticoPrincipal.enfermedad} (${diagnosticoPrincipal.confianza}%)`);
@@ -535,8 +767,240 @@ app.post('/api/diagnostico', (req, res) => {
   });
 });
 
-// ====================== SERVIDOR ======================
+// ========================================
+// RUTAS DE HISTORIAL (NUEVAS) 🆕
+// ========================================
 
+// POST /api/diagnosticos - Guardar diagnóstico en base de datos
+app.post('/api/diagnosticos', verificarToken, async (req, res) => {
+  try {
+    const { diagnostico, confianza, sintomas, top3 } = req.body;
+    const usuarioId = req.user.id;
+
+    if (!diagnostico || confianza === undefined || !sintomas) {
+      return res.status(400).json({
+        success: false,
+        message: 'Faltan datos requeridos'
+      });
+    }
+
+    const gravedad = calcularGravedad(diagnostico, confianza);
+    const sintomasTexto = Array.isArray(sintomas) ? sintomas.join(', ') : sintomas;
+
+    // Crear consulta con diagnósticos probables
+    const nuevaConsulta = await prisma.$transaction(async (tx) => {
+      const consulta = await tx.consultas.create({
+        data: {
+          usuario_id: usuarioId,
+          sintomas_inicial: sintomasTexto,
+          diagnostico_final: diagnostico,
+          gravedad: gravedad,
+          estado: 'cerrada'
+        }
+      });
+
+      // Diagnóstico principal
+      await tx.diagnosticos_probables.create({
+        data: {
+          consulta_id: consulta.id,
+          enfermedad: diagnostico,
+          probabilidad: parseFloat(confianza),
+          descripcion: `Diagnóstico principal con ${confianza}% de confianza`,
+          recomendaciones: 'Consultar con un médico profesional para confirmación'
+        }
+      });
+
+      // Diagnósticos alternativos (top3)
+      if (top3 && Array.isArray(top3)) {
+        for (const diag of top3.slice(1)) {
+          await tx.diagnosticos_probables.create({
+            data: {
+              consulta_id: consulta.id,
+              enfermedad: diag.enfermedad,
+              probabilidad: parseFloat(diag.confianza),
+              descripcion: `Diagnóstico alternativo #${diag.posicion}`,
+              recomendaciones: 'Diagnóstico diferencial a considerar'
+            }
+          });
+        }
+      }
+
+      return await tx.consultas.findUnique({
+        where: { id: consulta.id },
+        include: {
+          diagnosticos_probables: { orderBy: { probabilidad: 'desc' } },
+          usuarios: { include: { personas: true } }
+        }
+      });
+    });
+
+    console.log(`✅ Diagnóstico guardado: ${diagnostico} (${confianza}%) - Usuario: ${usuarioId}`);
+
+    res.status(201).json({
+      success: true,
+      message: 'Diagnóstico guardado exitosamente',
+      data: nuevaConsulta
+    });
+
+  } catch (error) {
+    console.error('❌ Error al guardar diagnóstico:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error al guardar diagnóstico',
+      error: error.message
+    });
+  }
+});
+
+// GET /api/diagnosticos - Obtener historial del usuario
+app.get('/api/diagnosticos', verificarToken, async (req, res) => {
+  try {
+    const usuarioId = req.user.id;
+
+    const consultas = await prisma.consultas.findMany({
+      where: { usuario_id: usuarioId },
+      orderBy: { created_at: 'desc' },
+      include: {
+        diagnosticos_probables: { orderBy: { probabilidad: 'desc' } },
+        usuarios: { include: { personas: true } }
+      }
+    });
+
+    const historialFormateado = consultas.map(consulta => {
+      const diagnosticoPrincipal = consulta.diagnosticos_probables[0];
+      
+      return {
+        id: consulta.id,
+        diagnostico: consulta.diagnostico_final || diagnosticoPrincipal?.enfermedad || 'Sin diagnóstico',
+        confianza: diagnosticoPrincipal?.probabilidad ? Number(diagnosticoPrincipal.probabilidad) : 0,
+        sintomas: consulta.sintomas_inicial.split(', '),
+        gravedad: consulta.gravedad,
+        nombrePaciente: `${consulta.usuarios.personas.nombres} ${consulta.usuarios.personas.apellido_paterno}`,
+        fecha: consulta.created_at,
+        estado: consulta.estado
+      };
+    });
+
+    res.json({
+      success: true,
+      data: historialFormateado
+    });
+
+  } catch (error) {
+    console.error('❌ Error al obtener historial:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error al obtener historial',
+      error: error.message
+    });
+  }
+});
+
+// GET /api/diagnosticos/estadisticas - Obtener estadísticas
+app.get('/api/diagnosticos/estadisticas', verificarToken, async (req, res) => {
+  try {
+    const usuarioId = req.user.id;
+
+    const [total, baja, moderada, alta] = await Promise.all([
+      prisma.consultas.count({ where: { usuario_id: usuarioId } }),
+      prisma.consultas.count({ where: { usuario_id: usuarioId, gravedad: 'baja' } }),
+      prisma.consultas.count({ where: { usuario_id: usuarioId, gravedad: 'moderada' } }),
+      prisma.consultas.count({ where: { usuario_id: usuarioId, gravedad: 'alta' } })
+    ]);
+
+    res.json({
+      success: true,
+      data: { total, baja, moderada, alta }
+    });
+
+  } catch (error) {
+    console.error('❌ Error al obtener estadísticas:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error al obtener estadísticas',
+      error: error.message
+    });
+  }
+});
+
+// GET /api/diagnosticos/:id - Obtener consulta específica
+app.get('/api/diagnosticos/:id', verificarToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const usuarioId = req.user.id;
+
+    const consulta = await prisma.consultas.findFirst({
+      where: { id: parseInt(id), usuario_id: usuarioId },
+      include: {
+        diagnosticos_probables: { orderBy: { probabilidad: 'desc' } },
+        historial_conversaciones: { orderBy: { created_at: 'asc' } },
+        usuarios: { include: { personas: true } }
+      }
+    });
+
+    if (!consulta) {
+      return res.status(404).json({
+        success: false,
+        message: 'Consulta no encontrada'
+      });
+    }
+
+    res.json({
+      success: true,
+      data: consulta
+    });
+
+  } catch (error) {
+    console.error('❌ Error al obtener consulta:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error al obtener consulta',
+      error: error.message
+    });
+  }
+});
+
+// DELETE /api/diagnosticos/:id - Eliminar consulta
+app.delete('/api/diagnosticos/:id', verificarToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const usuarioId = req.user.id;
+
+    const consulta = await prisma.consultas.findFirst({
+      where: { id: parseInt(id), usuario_id: usuarioId }
+    });
+
+    if (!consulta) {
+      return res.status(404).json({
+        success: false,
+        message: 'Consulta no encontrada'
+      });
+    }
+
+    await prisma.consultas.delete({
+      where: { id: parseInt(id) }
+    });
+
+    console.log(`🗑️ Consulta eliminada: ID ${id} - Usuario: ${usuarioId}`);
+
+    res.json({
+      success: true,
+      message: 'Consulta eliminada exitosamente'
+    });
+
+  } catch (error) {
+    console.error('❌ Error al eliminar consulta:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error al eliminar consulta',
+      error: error.message
+    });
+  }
+});
+
+// ========================================
+// INICIAR SERVIDOR
+// ========================================
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`\n🚀 ========================================`);
@@ -546,12 +1010,14 @@ app.listen(PORT, () => {
   console.log(`📡 Endpoints:`);
   console.log(`   POST /api/auth/register`);
   console.log(`   POST /api/auth/login`);
-  console.log(`   POST /api/diagnostico`);
+  console.log(`   POST /api/diagnostico           (IA - Obtener diagnóstico)`);
+  console.log(`   POST /api/diagnosticos          (Guardar en BD) 🆕`);
+  console.log(`   GET  /api/diagnosticos          (Historial) 🆕`);
+  console.log(`   GET  /api/diagnosticos/:id      (Detalle) 🆕`);
+  console.log(`   GET  /api/diagnosticos/estadisticas 🆕`);
+  console.log(`   DELETE /api/diagnosticos/:id 🆕`);
   console.log(`========================================`);
   console.log(`🤖 Algoritmo: Logistic Regression`);
-  console.log(`📊 Características:`);
-  console.log(`   • Top 3 diagnósticos posibles`);
-  console.log(`   • Explicación detallada`);
-  console.log(`   • Confianza por porcentaje`);
+  console.log(`📊 Enfermedades: ${diagnosticos.length} patrones`);
   console.log(`========================================\n`);
 });
